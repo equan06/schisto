@@ -1,0 +1,129 @@
+---
+title: "Ethiopia LSMS-ISA"
+author: Elliot Quan
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(haven) # for converting .dta to .csv
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message=FALSE)
+```
+
+
+
+# 2011-2012 (WAVE 1)
+```{r}
+sect3_pp_w1 <- read.csv('../LSMS/Ethiopia/2011-12/sect3_pp_w1.csv')
+```
+
+```{r}
+wave1_fert <- sect3_pp_w1 %>% 
+  select(pp_s3q14, pp_s3q15, pp_s3q18, pp_s3q21, pp_s3q23, pp_s3q25) %>% 
+  rename(fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25)
+# 1 encoded as YES
+# change 2 to 0 NO
+wave1_fert[wave1_fert==2] <- 0
+
+wave1_avg <- c(colMeans(wave1_fert, na.rm=TRUE))
+```
+
+
+# 2013-2014 (WAVE 2)
+
+## Generate wave 2 csv file from .dta
+```{r, eval=FALSE}
+# run once!
+dta = read_dta('../LSMS/Ethiopia/2013-14/sect3_pp_w2.dta') 
+write.csv(dta, file='../LSMS/Ethiopia/2013-14/2013-14_csv/sect3_pp_w2.csv')
+```
+
+```{r}
+sect3_pp_w2 <- read.csv('../LSMS/Ethiopia/2013-14/2013-14_csv/sect3_pp_w2.csv')
+```
+
+```{r}
+wave2_fert <- sect3_pp_w2 %>% 
+  select(pp_s3q14, pp_s3q15, pp_s3q18, pp_s3q21, pp_s3q23, pp_s3q25) %>% 
+  rename(fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25)
+# 1 encoded as YES
+# change 2 to 0 NO
+wave2_fert[wave2_fert==2] <- 0
+
+wave2_avg <- c(colMeans(wave2_fert, na.rm=TRUE))
+```
+
+
+# 2015-2016 (WAVE 3)
+
+```{r}
+sect3_pp_w3 <- read.csv('../LSMS/Ethiopia/2015-16/Post-Planting/sect3_pp_w3.csv')
+
+wave3_fert <- sect3_pp_w3 %>% 
+  select(pp_s3q14, pp_s3q15, pp_s3q18, pp_s3q21, pp_s3q23, pp_s3q25) %>% 
+  rename(fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25)
+# 1 encoded as YES
+# change 2 to 0 NO
+wave3_fert[wave3_fert==2] <- 0
+
+wave3_avg <- c(colMeans(wave3_fert, na.rm=TRUE))
+```
+
+
+# results
+
+```{r}
+combined <- c(wave1_avg, wave2_avg, wave3_avg)
+df <- data.frame(matrix(combined, ncol=6, byrow=TRUE))
+colnames(df) <- c('fert', 'urea', 'dap', 'manure', 'compost', 'organic_fert')
+df$year_start <- c(2011, 2013, 2015)
+df$year_end <- c(2012, 2014, 2016)
+df <- df[, c(7, 8, 1:6)]
+df
+```
+
+
+# grouping by household_id to look at % hh using fert.
+# NOTE: need to recompute organic fertilizer percentage, since clearly is not complete. would be nice to aggregate all types (manure + compost + organic fert) as an indicator variable, and then calculate the average of that variable (which would represent organic fert.), since clearly it doesn't make sense for organic fert to be 
+```{r} 
+
+wave1_test <- sect3_pp_w1 %>% 
+  select(household_id, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25)
+# 1 encoded as YES
+# change 2 to 0 NO
+wave1_test[wave1_test==2] <- 0
+
+# compute number of uses per unique household_id
+by_hh <- wave1_test %>% group_by(household_id) %>%
+  summarize_each(funs(sum(., na.rm=TRUE)))
+
+# replace usage by 1; we care if atleast 1 member from a household used fertilizer
+by_hh[by_hh > 0] <- 1
+colMeans(by_hh)[2:ncol(by_hh)]
+
+
+
+#wave1_avg <- c(colMeans(wave1_test, na.rm=TRUE))
+```
+
+
+```{r}
+sect7_pp_w1 <- read.csv('../LSMS/Ethiopia/2011-12/sect7_pp_w1.csv')
+summary(sect7_pp_w1$pw)
+```
+
+```{r}
+s7 <- sect7_pp_w1 %>%
+  select(household_id, pw, chem_fert=pp_s7q02)
+s7[s7==2] <- 0
+s7_by_hh <- s7 %>% group_by(household_id, pw) %>% summarize(chem_fert=sum(chem_fert, na.rm=TRUE) > 0)
+s7_by_hh$chem_fert <- as.integer(s7_by_hh$chem_fert)
+mean(s7_by_hh$chem_fert) # we see that without weighting, avg is 41%
+s7_by_hh <- s7_by_hh %>% mutate(chem_fert_w=pw*chem_fert) 
+sum(s7_by_hh$chem_fert_w)/sum(s7_by_hh$pw) # with weighting, avg is 54%
+```
+

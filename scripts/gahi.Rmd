@@ -1,0 +1,53 @@
+---
+title: "GAHI"
+author: Elliot Quan
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+africa <- read.csv('../GAHI/data/africa_data.csv')
+
+unique(africa$country_title)
+
+```
+
+```{r}
+countries <- c('Burkina Faso', 'Ethiopia', 'Malawi', 'Mali', 'Niger', 'Nigeria', 'Tanzania', 'Uganda')
+schisto_summary <- africa %>% 
+  filter(!is.na(number_positive) & !is.na(number_examined) ) %>%
+  filter(country_title %in% countries) %>%
+  group_by(country_title, publication_year) %>% 
+  summarize(num_pos=sum(number_positive), num_examined=sum(number_examined), prev=num_pos/num_examined) %>%
+  mutate(prev = round(prev, digits=3)) %>% 
+  rename(country=country_title, year=publication_year)
+  
+```
+
+
+```{r}
+schisto_summary
+```
+
+```{r}
+write.csv(schisto_summary, file='GAHI_schisto.csv', row.names = FALSE)
+```
+
+
+```{r}
+
+```
+
+
+
+
