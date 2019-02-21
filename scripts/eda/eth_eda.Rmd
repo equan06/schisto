@@ -1,0 +1,100 @@
+---
+title: "peth_eda"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(haven) # for converting .dta to .csv
+```
+
+```{r}
+# auxiliary function for handling sums of NA vectors
+# if all elements are NA return NA, else return sum of the non NA elements
+sumNA <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(sum(x, na.rm=TRUE))
+  }
+}
+```
+
+# preliminary analysis
+
+# 2011-2012 (WAVE 1)
+```{r}
+sect3_pp_w1 <- read.csv('../LSMS/Ethiopia/2011-12/sect3_pp_w1.csv')
+```
+
+```{r}
+wave1_fert <- sect3_pp_w1 %>% 
+  select(pp_s3q14, pp_s3q15, pp_s3q18, pp_s3q21, pp_s3q23, pp_s3q25) %>% 
+  rename(fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25)
+# 1 encoded as YES
+# change 2 to 0 NO
+wave1_fert[wave1_fert==2] <- 0
+
+wave1_avg <- c(colMeans(wave1_fert, na.rm=TRUE))
+```
+
+
+# 2013-2014 (WAVE 2)
+
+## Generate wave 2 csv file from .dta
+```{r, eval=FALSE}
+# run once!
+dta = read_dta('../LSMS/Ethiopia/2013-14/sect3_pp_w2.dta') 
+write.csv(dta, file='../LSMS/Ethiopia/2013-14/2013-14_csv/sect3_pp_w2.csv')
+```
+
+```{r}
+sect3_pp_w2 <- read.csv('../LSMS/Ethiopia/2013-14/2013-14_csv/sect3_pp_w2.csv')
+```
+
+```{r}
+wave2_fert <- sect3_pp_w2 %>% 
+  select(pp_s3q14, pp_s3q15, pp_s3q18, pp_s3q21, pp_s3q23, pp_s3q25) %>% 
+  rename(fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25)
+# 1 encoded as YES
+# change 2 to 0 NO
+wave2_fert[wave2_fert==2] <- 0
+
+wave2_avg <- c(colMeans(wave2_fert, na.rm=TRUE))
+```
+
+
+# 2015-2016 (WAVE 3)
+
+```{r}
+sect3_pp_w3 <- read.csv('../LSMS/Ethiopia/2015-16/Post-Planting/sect3_pp_w3.csv')
+
+wave3_fert <- sect3_pp_w3 %>% 
+  select(pp_s3q14, pp_s3q15, pp_s3q18, pp_s3q21, pp_s3q23, pp_s3q25) %>% 
+  rename(fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25)
+# 1 encoded as YES
+# change 2 to 0 NO
+wave3_fert[wave3_fert==2] <- 0
+
+wave3_avg <- c(colMeans(wave3_fert, na.rm=TRUE))
+```
+
+
+# results
+
+```{r}
+combined <- c(wave1_avg, wave2_avg, wave3_avg)
+df <- data.frame(matrix(combined, ncol=6, byrow=TRUE))
+colnames(df) <- c('fert', 'urea', 'dap', 'manure', 'compost', 'organic_fert')
+df$year_start <- c(2011, 2013, 2015)
+df$year_end <- c(2012, 2014, 2016)
+df <- df[, c(7, 8, 1:6)]
+df
+```
+
