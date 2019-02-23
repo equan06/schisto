@@ -12,6 +12,7 @@ knitr::opts_chunk$set(warning=FALSE, message=FALSE)
 
 ```{r}
 library(ggplot2)
+library(readr)
 library(dplyr)
 library(tidyr)
 library(haven) # for converting .dta to .csv
@@ -31,82 +32,232 @@ sumNA <- function(x) {
 }
 ```
 
-```{r}
-# sect3 is individual level data (fertilizer use)
-sect3_pp_w1 <- read.csv('../LSMS/Ethiopia/2011-12/sect3_pp_w1.csv')
-sect3_pp_w2 <- read.csv('../LSMS/Ethiopia/2013-14/2013-14_csv/sect3_pp_w2.csv')
-sect3_pp_w3 <- read.csv('../LSMS/Ethiopia/2015-16/Post-Planting/sect3_pp_w3.csv')
 
-# sect3 is household level (chemical fertilizer y/n)
-sect7_pp_w1 <- read.csv('../LSMS/Ethiopia/2011-12/sect7_pp_w1.csv')
+```{r}
+# sect3 is individual level data (fertilizer use). 
+# remark: read_csv from readr is apparently faster than base read.csv
+sect3_pp_w1 <- read_csv('../lsms_data/ethiopia/sect3_pp_w1.csv')
+sect3_pp_w2 <- read_csv('../lsms_data/ethiopia/sect3_pp_w2.csv') 
+sect3_pp_w3 <- read_csv('../lsms_data/ethiopia/sect3_pp_w3.csv')
+
+# sect7 is household level (chemical fertilizer y/n)
+sect7_pp_w1 <- read_csv('../lsms_data/ethiopia/sect7_pp_w1.csv')
+sect7_pp_w2 <- read_csv('../lsms_data/ethiopia/sect7_pp_w2.csv')
+sect7_pp_w3 <- read_csv('../lsms_data/ethiopia/sect7_pp_w3.csv')
 ```
 
+Remark: each row should correspond to a unique year|region. Note that the first level of subdivision of Ethiopia is by region
+(saq01).
+
 # Wave 1 (2011-2012)
-```{r} 
+
+
+
+
+```{r}
 wave1 <- sect3_pp_w1 %>% 
-  select(household_id, pw, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% drop_na(fert)
+  select(household_id, region=saq01, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, 
+         manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
+  drop_na(fert)
+head(wave1)
+```
 
+
+```{r} 
 # 1 encoded as YES
-# change 2 to 0 NO
-wave1[wave1==2] <- 0
+# 2 encoded as NO - wish to change to 0
+wave1[, -c(1,2)][wave1[, -c(1,2)]==2] <- 0
 
-# handling NAs - assume that if fert is 0 then no fertilizer was used
-cols <- 3:ncol(wave1)
+# handling NAs - assume that if fert is 0 then no fertilizer was used, so set other columns to 0
+cols <- 3:ncol(wave1) # 3 is first relevant column
 wave1[wave1$fert==0, 3:ncol(wave1)] <- 0
 
-# at this point there are 978/20000+ rows that have missing values - we will drop, since affects very few households 
-nrow(wave1[!complete.cases(wave1),])
 
+# summarize fertilizer use into 3 dummy vars: organic, inorganic, overall
 wave1 <- wave1 %>%
   mutate(
     organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
-         inorganic_fert_dummy = as.numeric((urea+dap) > 0),
+    inorganic_fert_dummy = as.numeric((urea+dap) > 0),
     fert_dummy = as.numeric((fert+urea+dap+manure+compost)>0)) %>% drop_na()
-
-
-
 ```
 
 
 
 ```{r}
-# compute number of uses per unique household_id/pw (one pw per household id, so valid)
-by_hh <- wave1 %>% group_by(household_id, pw) %>%
+# compute number of uses per region|unique household_
+hh_w1 <- wave1 %>% group_by(region, household_id) %>%
   summarize_each(funs(sum(., na.rm=TRUE)))
 
 
 # replace all values > 0 with 1 for computing average per household
-by_hh[, -c(1, 2)] <- ifelse(by_hh[, -c(1, 2)] > 0, 1, 0)
-colMeans(by_hh[, -c(1,2)])
+hh_w1[, -c(1, 2)] <- ifelse(hh_w1[, -c(1, 2)] > 0, 1, 0)
+hh_w1
+
+```
+
+```{r}
+# compute means of each column
+w1_data <- hh_w1 %>% select(-household_id) %>% group_by(region) %>% summarize_all(mean, na.rm=TRUE)
+
+# add counts of households per region
+w1_counts <- hh_w1 %>% tally()
+
+w1_data$n <- w1_counts$n
+
+head(w1_data)
 ```
 
 
-## Using sampling weights
+## Wave 2 (2013-2014)
+
+Luckily structure of wave2 data is almost identical to wave 1, so we can copy/paste most of the code. It may be more prudent to write a function (which I may do later, depending on how similar other survey data is) to do all of this
+
 ```{r}
+wave2 <- sect3_pp_w2 %>% 
+  select(household_id, region=saq01, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
+  drop_na(fert)
+```
 
-# if using weights: not sure if done correctly!
-weight_sum <- sum(by_hh$pw)
-weighted <- by_hh[, -c(1,2)] * by_hh$pw
-colSums(weighted)/weight_sum
 
-num_households <- nrow(by_hh)
-num_households
+```{r} 
+# 1 encoded as YES
+# 2 encoded as NO - wish to change to 0
+wave2[, -c(1,2)][wave2[, -c(1,2)]==2] <- 0
+
+
+# handling NAs - assume that if fert is 0 then no fertilizer was used, so set other columns to 0
+cols <- 3:ncol(wave2) # 3 is first relevant column
+wave2[wave2$fert==0, 3:ncol(wave2)] <- 0
+
+# summarize fertilizer use into 3 dummy vars: organic, inorganic, overall
+wave2 <- wave2 %>%
+  mutate(
+    organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
+    inorganic_fert_dummy = as.numeric((urea+dap) > 0),
+    fert_dummy = as.numeric((fert+urea+dap+manure+compost)>0)) %>% drop_na()
 ```
 
 
 
-# s7 wave1 (chem. fert.) data
+```{r}
+# compute number of uses per region|unique household_
+hh_w2 <- wave2 %>% group_by(region, household_id) %>%
+  summarize_each(funs(sum(., na.rm=TRUE)))
+
+
+# replace all values > 0 with 1 for computing average per household
+hh_w2[, -c(1, 2)] <- ifelse(hh_w2[, -c(1, 2)] > 0, 1, 0)
+head(hh_w2)
+
+```
 
 ```{r}
+w2_data <- hh_w2 %>% select(-household_id) %>% group_by(region) %>% summarize_all(mean, na.rm=TRUE)
+
+w2_counts <- hh_w2 %>% tally()
+
+w2_data$n <- w2_counts$n
+
+head(w2_data)
+```
+
+
+## Wave 3 (2015-2016)
+
+
+
+```{r}
+wave3 <- sect3_pp_w3 %>% 
+  select(household_id, region=saq01, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
+  drop_na(fert)
+head(wave3)
+```
+
+
+```{r} 
+# 1 encoded as YES
+# 2 encoded as NO - wish to change to 0
+wave3[, -c(1,2)][wave3[, -c(1,2)]==2] <- 0
+
+# handling NAs - assume that if fert is 0 then no fertilizer was used, so set other columns to 0
+cols <- 3:ncol(wave3) # 3 is first relevant column
+wave3[wave3$fert==0, 3:ncol(wave3)] <- 0
+
+# summarize fertilizer use into 3 dummy vars: organic, inorganic, overall
+wave3 <- wave3 %>%
+  mutate(
+    organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
+    inorganic_fert_dummy = as.numeric((urea+dap) > 0),
+    fert_dummy = as.numeric((fert+urea+dap+manure+compost)>0)) %>% drop_na()
+```
+
+
+
+```{r}
+# compute number of uses per region|unique household_
+hh_w3 <- wave3 %>% group_by(region, household_id) %>%
+  summarize_each(funs(sum(., na.rm=TRUE)))
+
+
+# replace all values > 0 with 1 for computing average per household
+hh_w3[, -c(1, 2)] <- ifelse(hh_w3[, -c(1, 2)] > 0, 1, 0) 
+hh_w3
+
+```
+
+```{r}
+w3_data <- hh_w3 %>% select(-household_id) %>% group_by(region) %>% summarize_all(mean, na.rm=TRUE)
+
+w3_counts <- hh_w3 %>% tally()
+
+w3_data$n <- w3_counts$n
+
+w3_data
+```
+
+
+
+
+# Combined Data
+
+```{r}
+w1_final <- data.frame(country=rep('ethiopia', nrow(w1_data)), start_yr = 2011, end_yr = 2012, w1_data)
+w2_final <- data.frame(country=rep('ethiopia', nrow(w2_data)), start_yr = 2013, end_yr = 2014, w2_data)
+w3_final <- data.frame(country=rep('ethiopia', nrow(w3_data)), start_yr = 2015, end_yr = 2016, w3_data)
+```
+
+```{r}
+eth_final <- rbind(w1_final, w2_final, w3_final) %>% rename(avg_rep_fert=fert, avg_urea=urea, avg_dap=dap, avg_manure = manure,
+                                                            avg_compost=compost, avg_rep_ofert=organic_fert, 
+                                                            avg_ofert = organic_fert_dummy,
+                                                            avg_iofert = inorganic_fert_dummy,
+                                                            avg_fert = fert_dummy,
+                                                            num_hh=n)
+head(eth_final)
+write_csv(eth_final, path='../results/eth_lsms.csv')
+```
+
+
+
+
+
+
+
+
+# s7 wave1 (chem. fert.) data - unused
+
+```{r, eval=FALSE}
 s7 <- sect7_pp_w1 %>%
   select(household_id, pw, chem_fert=pp_s7q02)
 s7[s7==2] <- 0
-s7_by_hh <- s7 %>% group_by(household_id, pw) %>% summarize(chem_fert=sum(chem_fert, na.rm=TRUE) > 0)
-s7_by_hh$chem_fert <- as.integer(s7_by_hh$chem_fert)
-mean(s7_by_hh$chem_fert) # we see that without weighting, avg is 41%
-s7_by_hh <- s7_by_hh %>% mutate(chem_fert_w=pw*chem_fert) 
-sum(s7_by_hh$chem_fert_w)/sum(s7_by_hh$pw) # with weighting, avg is 54%
+s7_hh_w1 <- s7 %>% group_by(household_id, pw) %>% summarize(chem_fert=sum(chem_fert, na.rm=TRUE) > 0)
+s7_hh_w1$chem_fert <- as.integer(s7_hh_w1$chem_fert)
+mean(s7_hh_w1$chem_fert) # we see that without weighting, avg is 41%
+s7_hh_w1 <- s7_hh_w1 %>% mutate(chem_fert_w=pw*chem_fert) 
+sum(s7_hh_w1$chem_fert_w)/sum(s7_hh_w1$pw) # with weighting, avg is 54%
 ```
+
+
 
 
 
