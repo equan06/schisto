@@ -295,7 +295,7 @@ eth_final <- rbind(eth_w1, eth_w2, eth_w3) %>% rename(avg_rep_fert=fert, avg_ure
 ```
 
 
-```{r}
+```{r, eval=FALSE}
 write_csv(eth_final, path='../results/eth_lsms.csv')
 ```
 
