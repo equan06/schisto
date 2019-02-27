@@ -146,6 +146,16 @@ w1_final
 ```
 
 
+Something that stood out: region 12 has 0 reported fertilizer use.
+
+```{r}
+r12 <- sect3_pp_w1 %>% 
+  select(household_id, region=saq01, zone=saq02, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, 
+         manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
+  drop_na(fert)
+unique(r12[r12$region == 12, ]$fert)
+```
+
 # Wave 2 (2013-2014)
 
 Luckily structure of wave2 data is almost identical to wave 1, so we can copy/paste most of the code. It may be more prudent to write a function (which I may do later, depending on how similar other survey data is) to do all of this
