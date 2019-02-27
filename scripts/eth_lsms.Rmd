@@ -1,6 +1,7 @@
 ---
 title: "Ethiopia LSMS-ISA"
 author: "Elliot Quan"
+date: "2/26/2019""
 output:
   html_document: default
   pdf_document: default
@@ -15,19 +16,31 @@ library(ggplot2)
 library(readr)
 library(dplyr)
 library(tidyr)
-library(haven) # for converting .dta to .csv
+#library(haven) # for converting .dta to .csv - not needed anymore
 ```
 
 
 
 ```{r}
 # auxiliary function for handling sums of NA vectors
-# if all elements are NA return NA, else return sum of the non NA elements
+# handles NA by returning NA if all are NA
 sumNA <- function(x) {
   if (all(is.na(x))) {
     return(NA)
   } else {
     return(sum(x, na.rm=TRUE))
+  }
+}
+
+# take a vector of inputs: if at least 1 input is 1, then return 1 else 0.
+# handles NA by returning NA if all are NA
+indicator <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else if (sum(x, na.rm=TRUE) > 0) {
+    return(1)
+  } else {
+    return(0)
   }
 }
 ```
@@ -45,7 +58,7 @@ sect4_pp_w1 <- read_csv('../lsms_data/ethiopia/sect4_pp_w1.csv')
 sect4_pp_w2 <- read_csv('../lsms_data/ethiopia/sect4_pp_w2.csv')
 sect4_pp_w3 <- read_csv('../lsms_data/ethiopia/sect4_pp_w3.csv')
 
-# sect7 is household level (chemical fertilizer y/n). Unused
+# sect7 is household level (chemical fertilizer y/n). UNUSED
 #sect7_pp_w1 <- read_csv('../lsms_data/ethiopia/sect7_pp_w1.csv')
 #sect7_pp_w2 <- read_csv('../lsms_data/ethiopia/sect7_pp_w2.csv')
 #sect7_pp_w3 <- read_csv('../lsms_data/ethiopia/sect7_pp_w3.csv')
@@ -59,22 +72,23 @@ Remark: each row should correspond to a unique year|region. Note that the first 
 
 # Wave 1 (2011-2012)
 
-
+This is the fert data (sect3_pp)
 ```{r} 
 wave1 <- sect3_pp_w1 %>% 
-  select(household_id, region=saq01, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, 
+  select(household_id, region=saq01, zone=saq02, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, 
          manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
   drop_na(fert)
 
-unique(wave1[wave1$region==12,]['fert']) # wave1 region 12 has 0 fertilizer use.
+# wave1 region 12 has 0 fertilizer use.
+unique(wave1[wave1$region == 12,]['fert']) 
 
 # 1 encoded as YES
 # 2 encoded as NO - wish to change to 0
-wave1[, -c(1,2)][wave1[, -c(1,2)]==2] <- 0
+# note: this notation allows us to modify anything except cols 1, 2, 3
+wave1[, -c(1,2,3)][wave1[, -c(1,2,3)] == 2] <- 0
 
 # handling NAs - assume that if fert is 0 then no fertilizer was used, so set other columns to 0
-cols <- 3:ncol(wave1) # 3 is first relevant column
-wave1[wave1$fert==0, 3:ncol(wave1)] <- 0
+wave1[wave1$fert==0, 4:ncol(wave1)] <- 0
 
 
 # summarize fertilizer use into 3 dummy vars: organic, inorganic, overall
@@ -82,56 +96,54 @@ wave1 <- wave1 %>%
   mutate(
     organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
     inorganic_fert_dummy = as.numeric((urea+dap) > 0),
-    fert_dummy = as.numeric((fert+urea+dap+manure+compost)>0))
+    fert_dummy = as.numeric((fert+urea+dap+manure+compost>0)))
+
 
 # compute number of uses per region|unique household
-hh_w1 <- wave1 %>% group_by(region, household_id) %>%
-  summarize_each(funs(sum(., na.rm=TRUE)))
+# see above function for indicator. final NAs are handled here.
+# for a column, if all household observations are all NA then drop
+w1_fert <- wave1 %>% group_by(region, zone, household_id) %>%
+  summarize_all(indicator) %>% drop_na()
 
-# replace all values > 0 with 1 for computing average per household
-hh_w1[, -c(1, 2)] <- ifelse(hh_w1[, -c(1, 2)] > 0, 1, 0)
 
+# compute zone averages
+w1_fert_avg <- w1_fert %>% select(-household_id) %>% group_by(region, zone) %>% summarize_all(mean)
+
+# compute zone counts
+w1_fert_avg$num_hh_fert <- (w1_fert %>% tally())$n
+w1_fert_avg
 ```
 
 
-now we compute the p/h/f data and merge it with the fert data on the household level. doing this we lose about 30 observations due to missing data. 
+Now we compute the p/h/f data in the same manner.
 
 ```{r}
-w1_phf <- sect4_pp_w1 %>% select(household_id, region=saq01, prevention=pp_s4q04, pest=pp_s4q05, herb=pp_s4q06, fung=pp_s4q07) %>% drop_na(prevention) 
+w1_phf <- sect4_pp_w1 %>% select(household_id, region=saq01, zone=saq02, prevention=pp_s4q04, pest=pp_s4q05, herb=pp_s4q06, fung=pp_s4q07) %>% drop_na(prevention) # if prevention method not specified then drop - can't recover.
 
-# set 2s to 0s
-w1_phf[, -c(1,2)][w1_phf[, -c(1,2)]==2] <- 0
+# encode 2s (NO) to 0s for columns 4 and on 
+w1_phf[, -c(1,2,3)][w1_phf[, -c(1,2,3)] == 2] <- 0
 
 
 # if no prevention used, set all rest of columns to 0
-cols <- 3:ncol(w1_phf) # 3 is first relevant column
-w1_phf[w1_phf$phf==0, 3:ncol(w1_phf)] <- 0
+w1_phf[w1_phf$prevention==0, 4:ncol(w1_phf)] <- 0
 
-w1_phf <- w1_phf %>% group_by(region, household_id) %>% summarize_all(sum, na.rm=TRUE)
-w1_phf[, -c(1, 2)] <- ifelse(w1_phf[, -c(1, 2)] > 0, 1, 0)
+# group by household level
+w1_phf <- w1_phf %>% group_by(region, zone, household_id) %>% summarize_all(indicator) %>% drop_na()
 
-hh_w1 <- hh_w1 %>% inner_join(w1_phf)
+# compute zone avgs
+w1_phf_avg <- w1_phf %>% select(-household_id) %>% group_by(region, zone) %>% summarize_all(mean)
 
+# compute zone counts
+w1_phf_avg$num_hh_phf <- (w1_phf %>% tally())$n
+w1_phf_avg
 ```
-
-
-
 
 
 ```{r}
-# compute means of each column
-w1_data <- hh_w1 %>% select(-household_id) %>% group_by(region) %>% summarize_all(mean, na.rm=TRUE)
-
-# add counts of households per region
-w1_counts <- hh_w1 %>% tally()
-
-w1_data$n <- w1_counts$n
+# zones match thankfully -  no missing zones.
+w1_final <- w1_fert_avg %>% inner_join(w1_phf_avg)
+w1_final
 ```
-
-
-
-
-
 
 
 # Wave 2 (2013-2014)
@@ -140,82 +152,75 @@ Luckily structure of wave2 data is almost identical to wave 1, so we can copy/pa
 
 ```{r}
 wave2 <- sect3_pp_w2 %>% 
-  select(household_id, region=saq01, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
+  select(household_id, region=saq01, zone=saq02, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
   drop_na(fert)
 
-# 1 encoded as YES
-# 2 encoded as NO - wish to change to 0
-wave2[, -c(1,2)][wave2[, -c(1,2)]==2] <- 0
+wave2[, -c(1,2,3)][wave2[, -c(1,2,3)] == 2] <- 0
+
+wave2[wave2$fert==0, 4:ncol(wave2)] <- 0
 
 
-# handling NAs - assume that if fert is 0 then no fertilizer was used, so set other columns to 0
-cols <- 3:ncol(wave2) # 3 is first relevant column
-wave2[wave2$fert==0, 3:ncol(wave2)] <- 0
-
-# summarize fertilizer use into 3 dummy vars: organic, inorganic, overall
 wave2 <- wave2 %>%
   mutate(
     organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
     inorganic_fert_dummy = as.numeric((urea+dap) > 0),
-    fert_dummy = as.numeric((fert+urea+dap+manure+compost)>0)) %>% drop_na()
-
-# compute number of uses per region|unique household_
-hh_w2 <- wave2 %>% group_by(region, household_id) %>%
-  summarize_each(funs(sum(., na.rm=TRUE)))
+    fert_dummy = as.numeric((fert+urea+dap+manure+compost)>0))
 
 
-# replace all values > 0 with 1 for computing average per household
-hh_w2[, -c(1, 2)] <- ifelse(hh_w2[, -c(1, 2)] > 0, 1, 0)
+w2_fert <- wave2 %>% group_by(region, zone, household_id) %>%
+  summarize_all(indicator) %>% drop_na()
+
+# compute zone averages
+w2_fert_avg <- w2_fert %>% select(-household_id) %>% group_by(region, zone) %>% summarize_all(mean)
+
+# compute zone counts
+w2_fert_avg$num_hh_fert <- (w2_fert %>% tally())$n
+w2_fert_avg
 ```
 
 
 p/h/f data
 ```{r}
-w2_phf <- sect4_pp_w2 %>% select(household_id, region=saq01, prevention=pp_s4q04, pest=pp_s4q05, herb=pp_s4q06, fung=pp_s4q07) %>% drop_na(prevention) 
+w2_phf <- sect4_pp_w2 %>% select(household_id, region=saq01, zone=saq02, prevention=pp_s4q04, pest=pp_s4q05, herb=pp_s4q06, fung=pp_s4q07) %>% drop_na(prevention) 
 
 # set 2s to 0s
-w2_phf[, -c(1,2)][w2_phf[, -c(1,2)]==2] <- 0
+w2_phf[, -c(1,2,3)][w2_phf[, -c(1,2,3)] == 2] <- 0
 
 
 # if no prevention used, set all rest of columns to 0
-cols <- 3:ncol(w2_phf) # 3 is first relevant column
-w2_phf[w2_phf$phf==0, 3:ncol(w2_phf)] <- 0
+w2_phf[w2_phf$prevention==0, 4:ncol(w2_phf)] <- 0
 
-w2_phf <- w2_phf %>% group_by(region, household_id) %>% summarize_all(sum, na.rm=TRUE)
-w2_phf[, -c(1, 2)] <- ifelse(w2_phf[, -c(1, 2)] > 0, 1, 0)
+w2_phf <- w2_phf %>% group_by(region, zone, household_id) %>% summarize_all(indicator) %>% drop_na()
 
-hh_w2 <- hh_w2 %>% inner_join(w2_phf)
+
+# compute zone avgs
+w2_phf_avg <- w2_phf %>% select(-household_id) %>% group_by(region, zone) %>% summarize_all(mean)
+
+# compute zone counts
+w2_phf_avg$num_hh_phf <- (w2_phf %>% tally())$n
+w2_phf_avg
 ```
 
 ```{r}
-w2_data <- hh_w2 %>% select(-household_id) %>% 
-  group_by(region) %>% summarize_all(mean, na.rm=TRUE)
-
-w2_counts <- hh_w2 %>% tally()
-
-w2_data$n <- w2_counts$n
-
-head(w2_data)
+# remark: there are missing zones in w2_phf, so NA rows are kept in the left_join. to remove missing zones
+# just use inner join (or add drop_na())
+w2_final <- w2_fert_avg %>% left_join(w2_phf_avg)
+w2_final
 ```
 
 
 # Wave 3 (2015-2016)
 
 
-
 ```{r}
 wave3 <- sect3_pp_w3 %>% 
-  select(household_id, region=saq01, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
+  select(household_id, region=saq01, zone=saq02, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25) %>% 
   drop_na(fert)
-# 1 encoded as YES
-# 2 encoded as NO - wish to change to 0
-wave3[, -c(1,2)][wave3[, -c(1,2)]==2] <- 0
 
-# handling NAs - assume that if fert is 0 then no fertilizer was used, so set other columns to 0
-cols <- 3:ncol(wave3) # 3 is first relevant column
-wave3[wave3$fert==0, 3:ncol(wave3)] <- 0
+wave3[, -c(1,2,3)][wave3[, -c(1,2,3)] == 2] <- 0
 
-# summarize fertilizer use into 3 dummy vars: organic, inorganic, overall
+wave3[wave3$fert==0, 4:ncol(wave3)] <- 0
+
 wave3 <- wave3 %>%
   mutate(
     organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
@@ -223,43 +228,40 @@ wave3 <- wave3 %>%
     fert_dummy = as.numeric((fert+urea+dap+manure+compost)>0)) %>% drop_na()
 
 # compute number of uses per region|unique household_
-hh_w3 <- wave3 %>% group_by(region, household_id) %>%
-  summarize_each(funs(sum(., na.rm=TRUE)))
+w3_fert <- wave3 %>% group_by(region, zone, household_id) %>% 
+  summarize_all(indicator) %>% drop_na()
 
+# compute zone averages
+w3_fert_avg <- w3_fert %>% select(-household_id) %>% group_by(region, zone) %>% summarize_all(mean)
 
-# replace all values > 0 with 1 for computing average per household
-hh_w3[, -c(1, 2)] <- ifelse(hh_w3[, -c(1, 2)] > 0, 1, 0) 
+# compute zone counts
+w3_fert_avg$num_hh_fert <- (w3_fert %>% tally())$n
+w3_fert_avg
 ```
 
 
-
+p/h/f data
 
 ```{r}
-w3_phf <- sect4_pp_w3 %>% select(household_id, region=saq01, prevention=pp_s4q04, pest=pp_s4q05, herb=pp_s4q06, fung=pp_s4q07) %>% drop_na(prevention) 
+w3_phf <- sect4_pp_w3 %>% select(household_id, region=saq01, zone=saq02, prevention=pp_s4q04, pest=pp_s4q05, herb=pp_s4q06, fung=pp_s4q07) %>% drop_na(prevention) 
 
-# set 2s to 0s
-w3_phf[, -c(1,2)][w3_phf[, -c(1,2)]==2] <- 0
+w3_phf[, -c(1,2,3)][w3_phf[, -c(1,2,3)]==2] <- 0
 
+w3_phf[w3_phf$prevention==0, 4:ncol(w3_phf)] <- 0
 
-# if no prevention used, set all rest of columns to 0
-cols <- 3:ncol(w3_phf) # 3 is first relevant column
-w3_phf[w3_phf$phf==0, 3:ncol(w3_phf)] <- 0
+w3_phf <- w3_phf %>% group_by(region, zone, household_id) %>% 
+  summarize_all(indicator) %>% drop_na()
 
-w3_phf <- w3_phf %>% group_by(region, household_id) %>% summarize_all(sum, na.rm=TRUE)
-w3_phf[, -c(1, 2)] <- ifelse(w3_phf[, -c(1, 2)] > 0, 1, 0)
+# compute zone avgs
+w3_phf_avg <- w3_phf %>% select(-household_id) %>% group_by(region, zone) %>% summarize_all(mean)
 
-hh_w3 <- hh_w3 %>% inner_join(w3_phf)
-
+# compute zone counts
+w3_phf_avg$num_hh_phf <- (w3_phf %>% tally())$n
+w3_phf_avg
 ```
 
 ```{r}
-w3_data <- hh_w3 %>% select(-household_id) %>% group_by(region) %>% summarize_all(mean, na.rm=TRUE)
-
-w3_counts <- hh_w3 %>% tally()
-
-w3_data$n <- w3_counts$n
-
-w3_data
+w3_final <- w3_fert_avg %>% inner_join(w3_phf_avg)
 ```
 
 
@@ -268,19 +270,18 @@ w3_data
 # Combined Data
 
 ```{r}
-w1_final <- data.frame(country=rep('ethiopia', nrow(w1_data)), start_yr = 2011, end_yr = 2012, w1_data)
-w2_final <- data.frame(country=rep('ethiopia', nrow(w2_data)), start_yr = 2013, end_yr = 2014, w2_data)
-w3_final <- data.frame(country=rep('ethiopia', nrow(w3_data)), start_yr = 2015, end_yr = 2016, w3_data)
+eth_w1 <- data.frame(country=rep('ethiopia', nrow(w1_final)), start_yr = 2011, end_yr = 2012, w1_final)
+eth_w2 <- data.frame(country=rep('ethiopia', nrow(w2_final)), start_yr = 2013, end_yr = 2014, w2_final)
+eth_w3 <- data.frame(country=rep('ethiopia', nrow(w3_final)), start_yr = 2015, end_yr = 2016, w3_final)
 ```
 
 ```{r}
-eth_final <- rbind(w1_final, w2_final, w3_final) %>% rename(avg_rep_fert=fert, avg_urea=urea, avg_dap=dap, avg_manure = manure,
+eth_final <- rbind(eth_w1, eth_w2, eth_w3) %>% rename(avg_rep_fert=fert, avg_urea=urea, avg_dap=dap, avg_manure = manure,
                                                             avg_compost=compost, avg_rep_ofert=organic_fert, 
                                                             avg_ofert = organic_fert_dummy,
                                                             avg_iofert = inorganic_fert_dummy,
                                                             avg_fert = fert_dummy, avg_prevention = prevention,
-                                                            avg_pest=pest, avg_herb=herb, avg_fung=fung,
-                                                            num_hh=n)
+                                                            avg_pest=pest, avg_herb=herb, avg_fung=fung)
 ```
 
 
@@ -291,6 +292,8 @@ write_csv(eth_final, path='../results/eth_lsms.csv')
 ```{r}
 eth_final
 ```
+
+
 
 
 
