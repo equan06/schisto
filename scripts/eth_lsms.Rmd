@@ -67,8 +67,8 @@ sect4_pp_w3 <- read_csv('../lsms_data/ethiopia/sect4_pp_w3.csv')
 
 
 
-Remark: each row should correspond to a unique year|region. Note that the first level of subdivision of Ethiopia is by region
-(saq01).
+In final output, each row should correspond to country|year|region|zone, where region and zone are the 1st
+and 2nd subdivisions of Ethiopia.
 
 # Wave 1 (2011-2012)
 
