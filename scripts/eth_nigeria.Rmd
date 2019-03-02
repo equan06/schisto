@@ -1,0 +1,184 @@
+---
+title: "nigeria_lsms"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE)
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(dummies)
+```
+
+
+```{r}
+# auxiliary function for handling sums of NA vectors
+# handles NA by returning NA if all are NA
+sumNA <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(sum(x, na.rm=TRUE))
+  }
+}
+
+# take a vector of inputs: if at least 1 input is 1, then return 1 else 0.
+# handles NA by returning NA if all are NA
+indicator <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else if (sum(x, na.rm=TRUE) > 0) {
+    return(1)
+  } else {
+    return(0)
+  }
+}
+```
+
+
+# Wave 1 (2010-2011)
+
+fertilizer 
+```{r}
+sect11d_pw1 <- read_csv('../lsms_data/nigeria/w1/sect11d_plantingw1.csv')
+```
+
+
+```{r}
+fert_s11d <- sect11d_pw1 %>% select(zone, state, hhid, rep_fert=s11dq1, 
+                      type_fert=s11dq14)
+```
+
+```{r}
+fert_s11d[, 4][fert_s11d[, 4] == 2] <- 0
+fert_s11d[fert_s11d$rep_fert==0, 5] <- 0
+# if fert used but not specified, then put other (4)
+fert_s11d[((fert_s11d$rep_fert==1) & is.na(fert_s11d$type_fert)), 5] <- 4
+fert_s11d
+```
+
+```{r}
+fert_s11d <- cbind(fert_s11d, dummy(fert_s11d$type_fert, sep='_'))
+fert_s11d
+```
+
+
+```{r}
+fert_s11d_named <- fert_s11d %>% rename(no_fert=fert_s11d_0, npk=fert_s11d_1, urea=fert_s11d_2, composite_manure=fert_s11d_3, other=fert_s11d_4)
+fert_s11d_named <- fert_s11d_named %>% select(-type_fert) %>% mutate(o_fert = composite_manure, io_fert = as.numeric((npk+urea) > 0)) 
+fert_s11d_named 
+```
+
+```{r}
+fert_s11d_named <- fert_s11d_named %>% select(-no_fert) %>% group_by(zone, state, hhid) %>% summarize_all(indicator) %>% drop_na()
+
+fert_avg_w1 <- fert_s11d_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
+
+fert_avg_w1$num_hh_fert <- (fert_s11d_named %>% tally())$n
+fert_avg_w1
+```
+
+pesticide/herbicide
+
+```{r}
+ph_w1 <- read_csv('../lsms_data/nigeria/w1/sect11c_plantingw1.csv')
+ph_w1
+```
+
+
+
+# Wave 2 (2012-2013)
+
+```{r}
+fert_w2 <- read_csv('../lsms_data/nigeria/w2/sect11d_plantingw2.csv')
+```
+
+
+```{r}
+fert_w2 <- fert_w2 %>% select(zone, state, hhid, rep_fert=s11dq1, type_fert=s11dq15) %>% drop_na(rep_fert)
+fert_w2 
+
+fert_w2[, 4][fert_w2[, 4] == 2] <- 0
+fert_w2[fert_w2$rep_fert==0, 5] <- 0
+# if fert used but not specified, then put other (4)
+fert_w2[((fert_w2$rep_fert==1) & is.na(fert_w2$type_fert)), 5] <- 4
+
+fert_w2_dummy <- cbind(fert_w2, dummy(fert_w2$type_fert, sep='_'))
+```
+
+```{r}
+w2_named <- fert_w2_dummy %>% rename(no_fert=fert_w2_0, npk=fert_w2_1, urea=fert_w2_2, composite_manure=fert_w2_3, other=fert_w2_4)
+
+w2_named <- w2_named %>% select(-type_fert) %>% mutate(o_fert = composite_manure, io_fert = as.numeric((npk+urea) > 0)) 
+
+```
+
+```{r}
+fert_w2_named <- w2_named %>% select(-no_fert) %>% group_by(zone, state, hhid) %>% summarize_all(indicator) %>% drop_na()
+
+fert_avg_w2 <- fert_w2_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
+
+fert_avg_w2$num_hh_fert <- (fert_w2_named %>% tally())$n
+fert_avg_w2
+```
+
+
+# Wave 3 (2015-2016)
+
+```{r}
+fert_11d_w3 <- read_csv('../lsms_data/nigeria/w3/secta11d_harvestw3.csv')
+```
+
+```{r}
+fert_w3 <- fert_11d_w3 %>% select(zone, state, hhid, rep_fert=s11dq1, type_fert=s11dq15) %>% drop_na(rep_fert)
+fert_w3[fert_w3$state==33, ] # 100% usage
+
+fert_w3[, 4][fert_w3[, 4] == 2] <- 0
+fert_w3[fert_w3$rep_fert==0, 5] <- 0
+# if fert used but not specified, then put other (4)
+fert_w3[((fert_w3$rep_fert==1) & is.na(fert_w3$type_fert)), 5] <- 4
+
+fert_w3_dummy <- cbind(fert_w3, dummy(fert_w3$type_fert, sep='_'))
+
+```
+
+```{r}
+w3_named <- fert_w3_dummy %>% rename(no_fert=fert_w3_0, npk=fert_w3_1, urea=fert_w3_2, composite_manure=fert_w3_3, other=fert_w3_4)
+
+w3_named <- w3_named %>% select(-type_fert) %>% mutate(o_fert = composite_manure, io_fert = as.numeric((npk+urea) > 0)) 
+
+```
+
+```{r}
+fert_w3_named <- w3_named %>% select(-no_fert) %>% group_by(zone, state, hhid) %>% summarize_all(indicator) %>% drop_na()
+
+fert_avg_w3 <- fert_w3_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
+
+fert_avg_w3$num_hh_fert <- (fert_w3_named %>% tally())$n
+fert_avg_w3
+```
+
+
+
+
+
+
+
+```{r, eval=FALSE}
+a <- read_dta('../lsms_data/nigeria/dta/sect11d_plantingw1.dta')
+write_csv(a, '../lsms_data/nigeria/sect11d_plantingw1.csv')
+
+a <- read_dta('../lsms_data/nigeria/dta/sect11d_plantingw2.dta')
+write_csv(a, '../lsms_data/nigeria/sect11d_plantingw2.csv')
+
+a <- read_dta('../lsms_data/nigeria/dta/sect11c_plantingw1.dta')
+write_csv(a, '../lsms_data/nigeria/sect11c_plantingw1.csv')
+
+a <- read_dta('../lsms_data/nigeria/dta/sect11c1_plantingw2.dta')
+write_csv(a, '../lsms_data/nigeria/sect11c1_plantingw2.csv')
+```
+
