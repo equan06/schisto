@@ -40,7 +40,9 @@ indicator <- function(x) {
 ```
 
 
-# Wave 1 (2010-2011)
+# Fertilizer data
+
+## Wave 1 (2010-2011)
 
 fertilizer 
 ```{r}
@@ -76,10 +78,10 @@ fert_s11d_named
 ```{r}
 fert_s11d_named <- fert_s11d_named %>% select(-no_fert) %>% group_by(zone, state, hhid) %>% summarize_all(indicator) %>% drop_na()
 
-fert_avg_w1 <- fert_s11d_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
+w1_fert_avg <- fert_s11d_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
 
-fert_avg_w1$num_hh_fert <- (fert_s11d_named %>% tally())$n
-fert_avg_w1
+w1_fert_avg$num_hh_fert <- (fert_s11d_named %>% tally())$n
+w1_fert_avg
 ```
 
 pesticide/herbicide
@@ -91,7 +93,7 @@ ph_w1
 
 
 
-# Wave 2 (2012-2013)
+## Wave 2 (2012-2013)
 
 ```{r}
 fert_w2 <- read_csv('../lsms_data/nigeria/w2/sect11d_plantingw2.csv')
@@ -120,14 +122,14 @@ w2_named <- w2_named %>% select(-type_fert) %>% mutate(o_fert = composite_manure
 ```{r}
 fert_w2_named <- w2_named %>% select(-no_fert) %>% group_by(zone, state, hhid) %>% summarize_all(indicator) %>% drop_na()
 
-fert_avg_w2 <- fert_w2_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
+w2_fert_avg <- fert_w2_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
 
-fert_avg_w2$num_hh_fert <- (fert_w2_named %>% tally())$n
-fert_avg_w2
+w2_fert_avg$num_hh_fert <- (fert_w2_named %>% tally())$n
+w2_fert_avg
 ```
 
 
-# Wave 3 (2015-2016)
+## Wave 3 (2015-2016)
 
 ```{r}
 fert_11d_w3 <- read_csv('../lsms_data/nigeria/w3/secta11d_harvestw3.csv')
@@ -156,16 +158,80 @@ w3_named <- w3_named %>% select(-type_fert) %>% mutate(o_fert = composite_manure
 ```{r}
 fert_w3_named <- w3_named %>% select(-no_fert) %>% group_by(zone, state, hhid) %>% summarize_all(indicator) %>% drop_na()
 
-fert_avg_w3 <- fert_w3_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
+w3_fert_avg <- fert_w3_named %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
 
-fert_avg_w3$num_hh_fert <- (fert_w3_named %>% tally())$n
-fert_avg_w3
+w3_fert_avg$num_hh_fert <- (fert_w3_named %>% tally())$n
+w3_fert_avg
+```
+
+
+# Pesticide/Herbicide
+
+## Wave 1
+
+```{r}
+w1_pest <- read_csv('../lsms_data/nigeria/w1/sect11c_plantingw1.csv')
+w1_pest
+```
+
+```{r}
+w1_pest <- w1_pest %>% select(zone, state, hhid, pest=s11cq1, herb=s11cq10, pest_quant=s11cq2a, pest_unit=s11cq2b)
+w1_pest
+```
+
+```{r}
+w1_pest[, c('pest', 'herb')][w1_pest[, c('pest', 'herb')] == 2] <- 0
+w1_pest[!is.na(w1_pest$pest_quant), c('pest_quant')] # possible to get avg quantity used, but would probably convert to kilos first
+```
+```{r}
+w1_pest <- w1_pest %>% group_by(zone, state, hhid) %>% summarize(pest=indicator(pest), herb=indicator(herb)) %>% drop_na(pest, herb)
+w1_pest_avg <- w1_pest %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
+w1_pest_avg$num_hh_phf <- (w1_pest_avg %>% tally())$n
+w1_pest_avg
+```
+
+## Wave 2 is missing:
+
+sect11c2_plantingw2
+
+## Wave 3
+
+```{r}
+w3_pest <- read_csv('../lsms_data/nigeria/w3/secta11c2_harvestw3.csv')
+w3_pest
 ```
 
 
 
+```{r}
+w3_pest <- w3_pest %>% select(zone, state, hhid, pest=s11c2q1, herb=s11c2q10)
+
+w3_pest[, c('pest', 'herb')][w3_pest[, c('pest', 'herb')] == 2] <- 0
+
+w3_pest <- w3_pest %>% group_by(zone, state, hhid) %>% summarize(pest=indicator(pest), herb=indicator(herb)) %>% drop_na(pest, herb)
+
+w3_pest_avg <- w3_pest %>% select(-hhid) %>% group_by(zone, state) %>% summarize_all(mean)
+w3_pest_avg$num_hh_phf <- (w3_pest_avg %>% tally())$n
+w3_pest_avg
+```
 
 
+
+# Combining
+```{r}
+w1_final <- w1_fert_avg %>% inner_join(w1_pest_avg)
+w3_final <- w3_fert_avg %>% inner_join(w3_pest_avg)
+```
+
+```{r}
+w1_nigeria <- data.frame(country=rep('nigeria', nrow(w1_final)), start_yr = 2010, end_yr = 2011, w1_final)
+w3_nigeria <- data.frame(country=rep('nigeria', nrow(w3_final)), start_yr = 2015, end_yr = 2016, w3_final)
+```
+
+```{r}
+nigeria_final <- rbind(w1_nigeria, w3_nigeria) %>% 
+nigeria_final
+```
 
 
 ```{r, eval=FALSE}
