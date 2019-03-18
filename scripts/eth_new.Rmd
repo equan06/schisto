@@ -73,9 +73,9 @@ sect4_pp_w3 <- read_csv('../lsms_data/ethiopia/sect4_pp_w3.csv')
 We'll do fertilizer separately from Pest/herb/fung data. Since data formats are almost same across all waves, will do the following:
 
 1) join each wave's data with wave's location data
-2) apply relevant transformations, then do sf_join to assign a zone geometry object (we'll call it SF_ZONE) to each row
-3) group by the SF_ZONE name
-4) merge with GAHI by SF_ZONE
+2) apply relevant transformations, then do sf_join to assign a zone geometry object & ZONENAME to each row
+3) group by ZONENAME
+4) merge GAHI + LSMS by ZONENAME and year. 
 
 # fertilizer data
 
