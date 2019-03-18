@@ -1,0 +1,35 @@
+country,year,district,zone,num_pos,num_examined,prev
+Ethiopia,1995,,,73,520,0.14
+Ethiopia,2002,Amhara,north gondar,165,325,0.508
+Ethiopia,2003,SNNPR,sidama,346,1160,0.298
+Ethiopia,2004,,,222,496,0.448
+Ethiopia,2004,Oromia,west arsi,3,89,0.034
+Ethiopia,2005,,,0,944,0
+Ethiopia,2005,Oromia,west hararge,18,415,0.043
+Ethiopia,2007,,,680,1161,0.586
+Ethiopia,2007,Amhara,north wollo,445,557,0.799
+Ethiopia,2007,Oromia,jimma,134,908,0.148
+Ethiopia,2007,SNNPR,gamo gofa,641,984,0.651
+Ethiopia,2008,,,67,184,0.364
+Ethiopia,2009,Amhara,north wollo,155,171,0.906
+Ethiopia,2009,Oromia,north shewa,0,235,0
+Ethiopia,2009,SNNPR,gamo gofa,154,162,0.951
+Ethiopia,2011,Amhara,north gondar,121,319,0.379
+Ethiopia,2011,Oromia,jimma,136,517,0.263
+Ethiopia,2012,SNNPR,sidama,224,299,0.749
+Ethiopia,2013,,,5,763,0.007
+Ethiopia,2013,Amhara,north gondar,2,1010,0.002
+Ethiopia,2013,Amhara,oromiya,171,300,0.57
+Ethiopia,2013,Amhara,west gojjam,257,723,0.355
+Ethiopia,2013,SNNPR,gamo gofa,0,399,0
+Ethiopia,2014,Amhara,north gondar,752,1030,0.73
+Ethiopia,2014,Amhara,south gondar,5,392,0.013
+Ethiopia,2014,Amhara,south wollo,481,729,0.66
+Ethiopia,2014,Oromia,bale,43,340,0.126
+Ethiopia,2014,Oromia,east shewa,33,374,0.088
+Ethiopia,2014,SNNPR,konso special,109,344,0.317
+Ethiopia,2014,SNNPR,sidama,230,384,0.599
+Ethiopia,2015,Amhara,south gondar,11,464,0.024
+Ethiopia,2015,Gambella,agnua ii,109,304,0.359
+Ethiopia,2015,SNNPR,bench maji,206,460,0.448
+Ethiopia,2016,,,122,408,0.299
