@@ -12,22 +12,32 @@ Results by country are in /results.
 ### Ethiopia
 Statistics are computed by % usage by households per zone.
 
-Fertilizer
-* avg_rep_fert: Was fertilizer used?
-* avg_urea: Was Urea used?
-* avg_dap: Was DAP used?
-* avg_manure: Was manure used?
-* avg_compost: Was compost used?
-* avg_rep_ofert: Was organic fertilizer used (from survey)?
-* avg_ofert: Was organic fertilizer used (aggregated from manure+compost+rep_ofert)?
-* avg_iofert: Was inorganic fertilizer used (aggregated from dap+urea)?
-* avg_fert: Was fertilizer used (aggregated from use of any fert. Should be same as avg_rep_fert in theory)?
+
+* gahi_pub_yr: GAHI study publication year
+* lsms_start_yr: LSMS start year
+* lsms_end_yr: LSMS end year
+
+GAHI
+* prevalence: schistosomiasis prevalence 
+* num_positive: number of positive cases 
+* num_examined: number of examined people
+
+Fertilizer (averages)
+* fert: Was fertilizer used?
+* urea: Was Urea used?
+* dap: Was DAP used?
+* manure: Was manure used?
+* compost: Was compost used?
+* organic_fert: Was organic fertilizer used (survey question)?
+* organic_fert_dummy: Was organic fertilizer used (dummy var containing manure+compost+organic_fert)?
+* inorganic_fert_dummy: Was inorganic fertilizer used (dummy var containing urea+dap)?
+* fert_dummy: Was fertilizer used (dummy var containing all of above)?
 * num_hh_fert: Number of households per zone
 
-Pesticide/Herbicide/Fungicide
-* avg_prevention: Was any method of prevention used?
-* avg_pest: Was pesticide used?
-* avg_herb: Was herbicide used?
-* avg_fung: Was fungicide used?
+Pesticide/Herbicide/Fungicide (averages)
+* prevention: Was any method of prevention used?
+* pest: Was pesticide used?
+* herb: Was herbicide used?
+* fung: Was fungicide used?
 * num_hh_phf: Number of households per zone
 
