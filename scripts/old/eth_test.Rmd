@@ -1,0 +1,85 @@
+---
+title: "ethtest"
+author: Elliot Quan
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(readr)
+library(dummies)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(sf)
+```
+
+
+
+
+```{r}
+eth_zone <- st_read('../shapefiles/eth/Eth_Zone_2013.shp')
+```
+
+```{r}
+st_crs(eth_zone)
+```
+
+```{r}
+eth_zone_sf <- st_transform(eth_zone, "+proj=longlat +datum=WGS84")
+```
+
+
+```{r}
+africa <- read_csv('../GAHI/data/africa_data.csv')
+eth <- africa %>% filter(country_title == 'Ethiopia') %>% select(publication_year, prevalence, number_examined, number_positive, longitude, latitude) %>% drop_na()
+eth_sf <- st_as_sf(x=eth, coords=c('longitude', 'latitude'), crs= "+proj=longlat +datum=WGS84")
+#plot(st_geometry(sp), axes=TRUE)
+#plot(africa_pt, pch=1, col='red', add=TRUE)
+eth_sf
+```
+
+
+
+```{r}
+joined_gahi <- st_join(eth_sf, eth_zone_sf, left=FALSE)
+joined_gahi
+```
+
+
+```{r}
+# verifying that it works!
+names <- (africa %>% filter(country_title=='Ethiopia') %>% select(admin2, longitude, latitude) %>% drop_na())$admin2
+names
+```
+
+# LSMS 
+
+```{r}
+sect3_pp_w1 <- read_csv('../lsms_data/ethiopia/sect3_pp_w1.csv')
+
+geo1 <- read_csv('../lsms_data/ethiopia/pub_eth_householdgeovariables_y1.csv')
+
+lon_lat1 <- distinct(geo1 %>% select(ea_id, longitude=LON_DD_MOD, latitude=LAT_DD_MOD))
+
+# verify that location data intact
+lon_lat1[!complete.cases(lon_lat1), ]
+
+eth1 <- inner_join(lon_lat1, sect3_pp_w1)
+```
+
+```{r}
+eth1_sf <- st_as_sf(x=eth1, coords=c('longitude', 'latitude'), crs= "+proj=longlat +datum=WGS84")
+
+joined_lsms<- st_join(eth1_sf, eth_zone_sf, left=FALSE)
+joined_lsms
+```
+
+
+TODO
+
+now that things are associated to zones via the shapefile, can just do everything i did before and then groupby zones at the end for both datasets, and then combine GAHI + LSMS by zone
+

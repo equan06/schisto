@@ -1,0 +1,30 @@
+---
+title: "eth_zones"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(readr)
+library(dplyr)
+```
+
+
+```{r}
+zone_names <- read_csv('../lsms_data/ethiopia/et_local_area_unit_conversion.csv')
+zone_names
+```
+
+```{r}
+zone_names <- zone_names %>% mutate(zonename=tolower(zonename)) %>% select(region, zone, zonename)
+unique(zone_names)
+zone_names$zonename[zone_names$zonename=='south wolo'] <- 'south wollo'
+sort(unique(zone_names$zonename))
+```
+
+
+

@@ -303,7 +303,26 @@ write_csv(eth_final, path='../results/eth_lsms.csv')
 eth_final
 ```
 
+```{r}
+zone_names <- read_csv('../lsms_data/ethiopia/et_local_area_unit_conversion.csv')
+zone_names <- zone_names %>% mutate(zonename=tolower(zonename)) %>% select(region, zone, zonename)
+zone_names$zonename[zone_names$zonename=='south wolo'] <- 'south wollo'
+zone_names <- unique(zone_names)
+zone_names
+```
 
+```{r}
+eth_renamed <- merge(eth_final, zone_names)
+eth_renamed
+```
+
+
+
+```{r}
+schisto <- read_csv('../results/eth_schisto.csv')
+schisto
+unique(inner_join(schisto, eth_renamed, by = c('zone' = 'zonename', 'year' = 'start_yr')))
+```
 
 
 
