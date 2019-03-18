@@ -307,6 +307,7 @@ eth_final
 ```
 
 ```{r, eval=FALSE}
-write_csv(eth_final, '../results/eth_final.csv')
+no_geom <- data.frame(eth_final) %>% select(-geometry)
+write_csv(no_geom, '../results/eth_final.csv')
 ```
 
