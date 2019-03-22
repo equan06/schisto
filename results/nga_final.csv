@@ -1,0 +1,6 @@
+country,level2_name,gahi_lsms_start_yr,lsms_end_yr,prevalence,num_positive,num_examined,fert,npk,urea,composite_manure,other,organic_fert_dummy,inorganic_fert_dummy,fert_dummy,num_hh_fert,pest,herb,num_hh_phf
+nigeria,Jos North,2010,2011,0.0078125,3,384,1,1,0,0,0,0,1,1,2,0,0,2
+nigeria,Agaie,2012,2013,0.24582172701949861,353,1436,0.625,0.625,0,0,0,0,0.625,0.625,8,NA,NA,NA
+nigeria,Ihiala,2012,2013,0.019079685746352413,17,891,0.6111111111111112,0.6111111111111112,0,0,0,0,0.6111111111111112,0.6111111111111112,18,NA,NA,NA
+nigeria,NnewiSou,2012,2013,0.1978319783197832,146,738,0.42857142857142855,0.42857142857142855,0,0,0,0,0.42857142857142855,0.42857142857142855,7,NA,NA,NA
+nigeria,Orsu,2012,2013,0.010101010101010102,1,99,0.9,0.9,0,0,0,0,0.9,0.9,10,NA,NA,NA

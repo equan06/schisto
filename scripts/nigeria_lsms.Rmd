@@ -4,14 +4,16 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, warning=FALSE)
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message=FALSE)
 ```
 
 ```{r}
+library(sf)
 library(readr)
 library(dplyr)
 library(tidyr)
 library(dummies)
+library(haven)
 ```
 
 
@@ -40,27 +42,108 @@ indicator <- function(x) {
 ```
 
 
-# Fertilizer data
 
+# Shapefiles 
+
+from GADM. data is at the 2nd administrative level (Local Govt Areas)
+
+```{r}
+nga_sf <- readRDS('../shapefiles/nga/GADM/gadm36_NGA_2_sf.rds')
+st_crs(nga_sf)
+```
+
+# Geovars (location)
+
+```{r}
+loc1 <- read_csv("../lsms_data/nigeria/w1/NGA_HouseholdGeovariables_Y1.csv")
+loc1
+
+loc2 <- read_csv("../lsms_data/nigeria/w2/NGA_HouseholdGeovars_Y2.csv")
+loc2 
+
+loc3 <- read_csv("../lsms_data/nigeria/w3/nga_householdgeovars_y3.csv")
+loc3
+
+```
+
+```{r}
+loc1_f <- loc1 %>% select(hhid, longitude=lon_dd_mod, latitude = lat_dd_mod)
+loc1_mappings <- unique(loc1_f)
+
+loc2_f <- loc2 %>% select(hhid, longitude=lon_dd_mod, latitude = lat_dd_mod)
+loc2_mappings <- unique(loc2_f)
+
+loc3_f <- loc3 %>% select(hhid, longitude=LON_DD_MOD, latitude = LAT_DD_MOD)
+loc3_mappings <- unique(loc3_f)
+```
+
+
+# Fertilizer data
 ## Wave 1 (2010-2011)
+
+
 
 fertilizer 
 ```{r}
-sect11d_pw1 <- read_csv('../lsms_data/nigeria/w1/sect11d_plantingw1.csv')
+fert_w1 <- read_csv('../lsms_data/nigeria/w1/sect11d_plantingw1.csv')
+fert_w2 <- read_csv('../lsms_data/nigeria/w2/sect11d_plantingw2.csv')
+fert_w3 <- read_csv('../lsms_data/nigeria/w3/secta11d_harvestw3.csv')
 ```
 
 
 ```{r}
-fert_s11d <- sect11d_pw1 %>% select(zone, state, hhid, rep_fert=s11dq1, 
-                      type_fert=s11dq14)
+fert1 <- fert_w1 %>% select(zone, state, hhid, fert=s11dq1, 
+                      type_fert=s11dq14) %>% drop_na(fert)
+fert2 <- fert_w2 %>% select(zone, state, hhid, fert=s11dq1, 
+                      type_fert=s11dq15) %>% drop_na(fert)
+fert3 <- fert_w3 %>% select(zone, state, hhid, fert=s11dq1, 
+                      type_fert=s11dq15) %>% drop_na(fert)
+
+fert1_joined <- inner_join(fert1, loc1_mappings)
+fert1_joined
+
+fert2_joined <- inner_join(fert2, loc2_mappings)
+fert2_joined
+
+fert3_joined <- inner_join(fert3, loc3_mappings)
+fert3_joined
 ```
 
 ```{r}
-fert_s11d[, 4][fert_s11d[, 4] == 2] <- 0
-fert_s11d[fert_s11d$rep_fert==0, 5] <- 0
-# if fert used but not specified, then put other (4)
-fert_s11d[((fert_s11d$rep_fert==1) & is.na(fert_s11d$type_fert)), 5] <- 4
-fert_s11d
+w1_fert <- data.frame(country="nigeria", start_yr = 2010, end_yr = 2011, fert1_joined, stringsAsFactors = F) 
+w2_fert <- data.frame(country="nigeria", start_yr = 2012, end_yr = 2013, fert2_joined, stringsAsFactors = F)
+w3_fert <- data.frame(country="nigeria", start_yr = 2015, end_yr = 2016, fert3_joined, stringsAsFactors = F)
+fert <- rbind(w1_fert, w2_fert, w3_fert)
+fert[!complete.cases(fert$longitude, fert$latitude), ]
+```
+
+```{r}
+# join with sf data
+
+fert_sf <- st_as_sf(x=fert, coords=c("longitude", "latitude"), crs = "+proj=longlat +datum=WGS84 +nodefs")
+fert_joined <- st_join(nga_sf, fert_sf, left=FALSE)
+fert_joined
+```
+
+
+```{r}
+fert_df <- fert_joined %>% select(country, start_yr, end_yr, NAME_2, hhid, fert, type_fert) %>% st_set_geometry(NULL)
+rownames(fert_df) <- 1:nrow(fert_df)
+fert_df
+```
+
+
+```{r}
+# replace 2s with 1s in fert
+recode <- function(x) ifelse(x == 2 | x == 0, 0, 1)
+fert_df <- fert_df %>% mutate_at(c("fert"), recode)
+
+# if no fert used, then set type_fert to 0
+fert_df[(fert_df$fert == 0) & !is.na(fert_df$fert), c("type_fert")] <- 0
+
+# if fert used but not specified, then put other (set to 4)
+fert_df[(fert_df$fert == 1) & is.na(fert_df$type_fert), "type_fert"] <- 4
+fert_df
 ```
 
 ```{r}
@@ -102,7 +185,7 @@ fert_w2 <- read_csv('../lsms_data/nigeria/w2/sect11d_plantingw2.csv')
 
 ```{r}
 fert_w2 <- fert_w2 %>% select(zone, state, hhid, rep_fert=s11dq1, type_fert=s11dq15) %>% drop_na(rep_fert)
-fert_w2 
+fert_w2
 
 fert_w2[, 4][fert_w2[, 4] == 2] <- 0
 fert_w2[fert_w2$rep_fert==0, 5] <- 0

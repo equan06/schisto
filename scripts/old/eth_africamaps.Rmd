@@ -45,6 +45,7 @@ indicator <- function(x) {
 ```{r}
 eth_zone <- st_read("../shapefiles/eth/Eth_Zone_2013.shp")
 eth_zone_sf <- st_transform(eth_zone, "+proj=longlat +datum=WGS84")
+length(unique(eth_zone$ZONENAME))
 ```
 
 
@@ -347,3 +348,9 @@ pairs(~prevalence + fert + urea + dap + pest + herb + fung, data=eth_final)
 ```
 
 need more data!
+
+
+
+
+
+
