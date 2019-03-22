@@ -335,7 +335,7 @@ eth_gahi_lsms
 # Final dataset 
 To summarize, lsms data was outer joined together, and then lsms + gahi was inner joined.
 ```{r}
-eth_final <- eth_gahi_lsms %>% select(country, zone=NAME_2, gahi_lsms_start_yr=publication_year, lsms_end_yr=end_yr, prevalence, num_positive, num_examined, fert, urea, dap, manure, compost, organic_fert, organic_fert_dummy, inorganic_fert_dummy, fert_dummy, num_hh_fert, total_urea, total_dap, total_area, urea_use, dap_use, num_hh_quant, prevention, pest, herb, fung, num_hh_phf)
+eth_final <- eth_gahi_lsms %>% select(country, level2_name=NAME_2, gahi_lsms_start_yr=publication_year, lsms_end_yr=end_yr, prevalence, num_positive, num_examined, fert, urea, dap, manure, compost, organic_fert, organic_fert_dummy, inorganic_fert_dummy, fert_dummy, num_hh_fert, total_urea, total_dap, total_area, urea_use, dap_use, num_hh_quant, prevention, pest, herb, fung, num_hh_phf)
 eth_final
 ```
 
