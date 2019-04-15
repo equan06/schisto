@@ -1,5 +1,5 @@
 ---
-title: "nigeria_lsms"
+title: "Nigeria LSMS All"
 author: Elliot Quan
 output: html_document
 ---
@@ -18,8 +18,9 @@ library(haven)
 ```
 
 
-
 ```{r}
+# random functions: documentation is not 100% complete, will fix later.
+# 
 # auxiliary function for handling sums of NA vectors
 # handles NA by returning NA if all are NA
 sumNA <- function(x) {
@@ -76,28 +77,15 @@ recode <- function(x) ifelse(x == 2 | x == 0, 0, 1)
 #' this is mainly used for taking a y/n column x, and wanting to return 0 if x is 0 else y for each observation.
 #' for example: if x = (0, 0, 1) and y = (NA, NA, 15), then we want to return (0, 0, 15).
 handleNA <- function(x, y) ifelse(x == 0, 0, y)
-
 ```
 
-```{r}
-# test 
-test <- matrix(c(NA, NA, 2, 2, 3, 3, 4, 4, 5, NA), byrow=TRUE, ncol=2, nrow=5)
-testdf <- data.frame(test)
-testdf
-testdf$'3' <- unit_conv(testdf$X1, testdf$X2)
-testdf
-```
 
-# Plan
 
-1) spatial_join lsms fert, lsms pest, and gahi prevalence data with level2 shapefiles
-2) apply transformations to fert + pest to aggregate % households per level2 region
-3) combine gahi prevalence with lsms data
+# Description
 
-# Remarks
-Quantity data for fertilizer was NOT found (units were missing)
-Wave 2 Nigeria pesticide data was missing. 
-Quantity data for pesticide + herbicide can be found, but it is provided in 3 variables: amount purchased, amount leftover, and amount free.
+This notebook generates a csv file where each record corresponds to a unique household > plot. Shapefiles are from GADM at the 2nd subdivision level.
+
+
 
 # Shapefiles 
 
@@ -119,8 +107,8 @@ loc2
 
 loc3 <- read_csv("../lsms_data/nigeria/w3/nga_householdgeovars_y3.csv")
 loc3
-
 ```
+
 
 ```{r}
 loc1_f <- loc1 %>% select(hhid, longitude=lon_dd_mod, latitude = lat_dd_mod)
@@ -134,10 +122,9 @@ loc3_mappings <- unique(loc3_f)
 ```
 
 
+
+
 # Fertilizer data
-## Wave 1 (2010-2011)
-
-
 
 fertilizer data
 ```{r}
@@ -147,8 +134,6 @@ fert_w3 <- read_csv('../lsms_data/nigeria/w3/secta11d_harvestw3.csv')
 ```
 
 area data - need to join by plotid.
-
-
 ```{r}
 area_w1 <- read_csv('../lsms_data/nigeria/w1/sect11a1_plantingw1.csv')
 area_w2 <- read_csv('../lsms_data/nigeria/w2/sect11a1_plantingw2.csv')
@@ -200,25 +185,17 @@ fert3_joined <- inner_join(fert3, loc3_mappings)
 fert3_joined
 ```
 
+
 ```{r}
 w1_fert <- data.frame(country="nigeria", start_yr = 2010, end_yr = 2011, fert1_joined, stringsAsFactors = F) 
 w2_fert <- data.frame(country="nigeria", start_yr = 2012, end_yr = 2013, fert2_joined, stringsAsFactors = F)
 w3_fert <- data.frame(country="nigeria", start_yr = 2015, end_yr = 2016, fert3_joined, stringsAsFactors = F)
 fert <- rbind(w1_fert, w2_fert, w3_fert)
-fert[!complete.cases(fert$longitude, fert$latitude), ]
 fert
 ```
 
-# aggregating all quantities
-For each of leftover, free, bought1, bought2:
-  1) want to calculate what type of fertilizer was used
-  2) add that quantity to the corresponding type total
-  
-There are 4 types: npk, urea, composite manure, other.
 
-
-if no fert_yn == 2, then want to set other yn cols to 0.
-
+# recoding data
 ```{r}
 # for all y/n cols, change 2s to 0s
 
@@ -236,6 +213,7 @@ fert <- fert %>% mutate_at(c('leftover_type', 'leftover_quant'), list(~handleNA(
   mutate_at(c('bought2_type', 'bought2_quant'), list(~handleNA(bought2_yn, .)))
 fert
 ```
+
 
 ```{r}
 # for each of leftover, free, bought1, bought2, check that the type matches the desired type. if so, then add that quantity to the sum and return the sum.
@@ -255,68 +233,17 @@ fert <- fert %>% mutate(npk_quant = agg_quant(1, fert), urea_quant = agg_quant(2
 
 fert
 ```
-  
-```{r}
-fert <- fert %>% select(country, start_yr, end_yr, hhid, plotid, area, fert_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, total_quant, longitude, latitude)
-fert
-```
-
 
 
 ```{r}
-# join with sf data
-
-fert_sf <- st_as_sf(x=fert, coords=c("longitude", "latitude"), crs = 4326)
-fert_sf <- st_transform(fert_sf, crs= 3857)
-fert_joined <- st_join(nga_sf, fert_sf, left=FALSE)
-fert_joined
-```
-
-
-```{r}
-fert_df <- fert_joined %>% select(country, start_yr, end_yr, NAME_1, NAME_2, hhid, area, fert_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, total_quant) %>% st_set_geometry(NULL)
-rownames(fert_df) <- 1:nrow(fert_df)
-
-fert_df_use <- fert_df %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2, hhid) %>% summarize(npk_use = mean(npk_quant/area), urea_use = mean(urea_quant/area), comp_manure_use = mean(comp_manure_quant/area), other_use = mean(other_quant/area), total_use = mean(total_quant/area)) %>% drop_na()
-
-fert_df_indic  <- fert_df %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2, hhid) %>% summarize_each(funs=(indicator), fert_yn, npk_yn, urea_yn, comp_manure_yn, other_yn) %>% drop_na()
-
+fert_df <- fert %>% select(country, start_yr, end_yr, hhid, plotid, area, fert_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, total_quant, longitude, latitude)
 fert_df
-fert_df_use
-fert_df_indic
 ```
 
-```{r}
-# creating indicator vars for organic, inorganic, and any fert
-fert_df_indic <- fert_df_indic %>% mutate(organic_fert_dummy = comp_manure_yn, inorganic_fert_dummy = as.numeric((npk_yn + urea_yn) > 0), fert_dummy = as.numeric((organic_fert_dummy + inorganic_fert_dummy + other_yn) > 0)) 
 
-# grouping by hh: indicators. also dropping NAs at this point
-fert_only <- fert_df_indic %>% select(-hhid) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_all(mean)
-fert_only$num_hh_fert <- (fert_df_indic %>% tally())$n
+# Pesticide data
 
-# grouping by hh: quantities. also dropping NAs at this point.
-fert_quant <- fert_df_use %>% select(-hhid) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_all(mean)
-fert_quant$num_hh_quant <- (fert_df_use %>% tally())$n
-
-fert_only
-fert_quant
-```
-
-```{r}
-fert_all <- inner_join(fert_only, fert_quant)
-fert_all
-```
-
-```{r}
-for (i in 1:ncol(fert_all)) {
-  print(sum(is.na(fert_all[, i])))
-}
-
-```
-
-# Pesticide/Herbicide
-
-Note: wave 2 is missing sect11c2_plantingw2 -  will try to redownload.
+Note: Wave2 is missing sect11c2_plantingw2, so until that can be found we will omit for now.
 
 ```{r}
 w1_pest <- read_csv('../lsms_data/nigeria/w1/sect11c_plantingw1.csv')
@@ -325,6 +252,7 @@ w1_pest
 w3_pest <- read_csv('../lsms_data/nigeria/w3/secta11c2_harvestw3.csv')
 w3_pest
 ```
+
 
 
 ```{r}
@@ -340,22 +268,13 @@ pest3_j
 ```
 
 
-
 ```{r}
-pest_w1 <- pest1_j %>% inner_join(area_w1, by = c('hhid', 'plotid'))
-
-pest_w3 <- pest3_j %>% inner_join(area_w3, by = c('hhid', 'plotid'))
-
-pest_w1
-pest_w3
-```
-
-```{r}
-w1_p <- data.frame(country="nigeria", start_yr = 2010, end_yr = 2011, pest_w1, stringsAsFactors = F) 
-w3_p <- data.frame(country="nigeria", start_yr = 2015, end_yr = 2016, pest_w3, stringsAsFactors = F)
+w1_p <- data.frame(country="nigeria", start_yr = 2010, end_yr = 2011, pest1_j, stringsAsFactors = F) 
+w3_p <- data.frame(country="nigeria", start_yr = 2015, end_yr = 2016, pest3_j, stringsAsFactors = F)
 pest_c <- rbind(w1_p, w3_p)
 pest_c
 ```
+
 
 
 ```{r}
@@ -367,118 +286,22 @@ pest_c[pest_c$herb_yn == 2, c('herb_yn')] <- 0
 pest_c <- pest_c %>% mutate_at(c('pest_quant', 'pest_quant_unit'), list(~handleNA(pest_yn, .))) %>% 
   mutate_at(c('herb_quant', 'herb_quant_unit'), list(~handleNA(herb_yn, .)))
 pest_c
-```
 
-```{r}
-pest_conv <- pest_c %>% mutate(pest_quant = unit_conv_pest(pest_quant, pest_quant_unit), herb_quant = unit_conv_pest(herb_quant, herb_quant_unit))
-pest_conv
-```
-
-```{r}
-pest_conv[!complete.cases(pest_conv), ]
-```
-
-
-
-```{r}
-pest_sf <- st_as_sf(x=pest_conv, coords=c("longitude", "latitude"), crs = 4326)
-pest_sf <- st_transform(pest_sf, crs=3857)
-pest_joined <- st_join(nga_sf, pest_sf, left=FALSE)
-pest_joined
-```
-
-```{r}
-pest_df <- pest_joined %>% select(country, start_yr, end_yr, NAME_1, NAME_2, hhid, pest_yn, pest_quant, herb_yn, herb_quant, area) %>% st_set_geometry(NULL)
-rownames(pest_df) <- 1:nrow(pest_df)
+pest_df <- pest_c %>% mutate(pest_quant = unit_conv_pest(pest_quant, pest_quant_unit), herb_quant = unit_conv_pest(herb_quant, herb_quant_unit))
 pest_df
 ```
 
-```{r}
-# separate into indicators (Y/N) vs quantity data. 
-# for indicators, we first aggregate rows to be households : 1 if household used, else 0.
-pest_indic <- pest_df %>% select(-c('pest_quant', 'herb_quant', 'area')) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2, hhid) %>% summarize_all(indicator)
-
-
-# for quantity, we aggregate rows to be households, but we just take the mean use (quant/area)
-pest_quant <- pest_df %>% select(-c('pest_yn', 'herb_yn')) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2, hhid) %>% summarize(pest_use = mean(pest_quant/area), herb_use = mean(herb_quant/area)) 
-
-
-# now we can group by NAME_2 and compute an average over households
-pest_indic_grouped <- pest_indic %>% select(-hhid) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_all(mean) 
-pest_indic_grouped$num_hh_indic <- (pest_indic %>% tally())$n
-
-# same idea
-pest_quant_grouped <- pest_quant %>% select(-hhid) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_all(mean)
-pest_quant_grouped$num_hh_quant <- (pest_quant %>% tally())$n
-
-
-pest_all <- pest_indic_grouped %>% inner_join(pest_quant_grouped, by = c('end_yr', 'NAME_2')) %>% select(-c('country.y', 'start_yr.y', 'NAME_1.y')) %>% rename(country = country.x, start_yr = start_yr.x, NAME_1 = NAME_1.x)
-pest_all
-```
-
-
+# Merging Fertilizer + Pesticide
 
 ```{r}
-nga_lsms <- full_join(fert_all, pest_all)
-nga_lsms
+
 ```
 
 
 
-# GAHI prevalence
-
-```{r}
-africa <- read_csv("../GAHI/data/africa_data.csv")
-nga <- africa %>% filter(country_title == "Nigeria") %>% select(publication_year, prevalence, number_examined, number_positive, longitude, latitude) %>% drop_na()
-nga_gahi_sf <- st_as_sf(x=nga, coords=c("longitude", "latitude"), crs= 4326)
-nga_gahi_sf <- st_transform(nga_gahi_sf, crs = 3857)
-#plot(st_geometry(sp), axes=TRUE)
-#plot(africa_pt, pch=1, col="red", add=TRUE)
-joined_gahi <- st_join(nga_sf, nga_gahi_sf, left=FALSE)
-joined_gahi
-```
 
 
 
-```{r}
-# recalculate average prevalence per level2 
-nga_gahi <- joined_gahi %>% select(publication_year, number_examined, number_positive, NAME_1, NAME_2) %>% group_by(publication_year, NAME_1, NAME_2) %>% summarize(prevalence=sum(number_positive)/sum(number_examined), num_examined=sum(number_examined), num_positive=sum(number_positive))
-nga_gahi 
-```
-
-```{r}
-nga_lsms[nga_lsms$end_yr > 2010, ]
-```
 
 
-```{r}
-nga_gahi_lsms <- inner_join(nga_gahi, nga_lsms, by=c('publication_year' = 'end_yr', 'NAME_1', 'NAME_2')) %>% st_set_geometry(NULL)
-nga_gahi_lsms
-```
-
-```{r}
-nga_final <- nga_gahi_lsms %>% select(country, level2_name=NAME_2, gahi_lsms_start_yr=publication_year, lsms_end_yr=end_yr, prevalence, num_positive, num_examined, fert, npk, urea, composite_manure, other, organic_fert_dummy, inorganic_fert_dummy, fert_dummy, num_hh_fert, pest, herb, num_hh_phf)
-nga_final
-```
-
-```{r, eval=FALSE}
-write_csv(nga_final, "../results/nga_final.csv")
-```
-
-
-
-# DTA to CSV
-```{r, eval=FALSE}
-a <- read_dta('../lsms_data/nigeria/dta/sect11d_plantingw1.dta')
-write_csv(a, '../lsms_data/nigeria/sect11d_plantingw1.csv')
-
-a <- read_dta('../lsms_data/nigeria/dta/sect11d_plantingw2.dta')
-write_csv(a, '../lsms_data/nigeria/sect11d_plantingw2.csv')
-
-a <- read_dta('../lsms_data/nigeria/dta/sect11c_plantingw1.dta')
-write_csv(a, '../lsms_data/nigeria/sect11c_plantingw1.csv')
-
-a <- read_dta('../lsms_data/nigeria/dta/sect11c1_plantingw2.dta')
-write_csv(a, '../lsms_data/nigeria/sect11c1_plantingw2.csv')
-```
 

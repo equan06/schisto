@@ -1,6 +1,8 @@
 ---
-title: "eth_new"
+title: 'Ethiopia LSMS + GAHI processing'
+author: Elliot Quan
 output: html_document
+date: 3/29/19
 ---
 
 ```{r setup, include=FALSE}
@@ -9,13 +11,22 @@ knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
 
 ```{r}
 library(sf)
-library(ggplot2)
-library(readr)
-library(dplyr)
-library(tidyr)
+library(tidyverse)
 ```
 
+# Rough Plan
 
+We"ll do fertilizer data separately from pest/herb/fung data, and then combine down the line. Since data formats are almost same across all waves, will do the following:
+
+1) join each wave's data with wave's location data
+2) apply relevant transformations, then do sf_join to assign a zone geometry object & NAME_2 (names of the second subdivisions of the country) to each row. 
+3) group by household, applying indicators where necessary
+3) group by NAME_2 
+4) merge GAHI + LSMS by NAME_2 and year. 
+
+
+
+# Custom Functions
 ```{r}
 # auxiliary function for handling sums of NA vectors
 # handles NA by returning NA if all are NA
@@ -41,14 +52,20 @@ indicator <- function(x) {
 ```
 
 
-
+# Shapefile Data (GADM)
+Note: there are two zones with the same name: North Shewa. 
 ```{r}
 eth_zone <- st_read("../shapefiles/eth/GADM/gadm36_ETH_2.shp")
-eth_zone_sf <- st_transform(eth_zone, "+proj=longlat +datum=WGS84 +nodefs")
-unique(eth_zone$NAME_2)
+eth_zone_sf <- st_transform(eth_zone, crs=3857) # convert to mercator/planar (3857)
+```
+
+```{r}
+eth_zone_sf[eth_zone_sf$NAME_1 == 'Amhara' & eth_zone_sf$NAME_2 == 'North Shewa', 'NAME_2'] 
+
 ```
 
 
+# LSMS Agricultural Data
 ```{r}
 # sect3 is individual level fertilizer use
 # remark: read_csv from readr is apparently faster than base read.csv
@@ -61,7 +78,7 @@ sect4_pp_w1 <- read_csv("../lsms_data/ethiopia/sect4_pp_w1.csv")
 sect4_pp_w2 <- read_csv("../lsms_data/ethiopia/sect4_pp_w2.csv")
 sect4_pp_w3 <- read_csv("../lsms_data/ethiopia/sect4_pp_w3.csv")
 
-# sect7 is household level (chemical fertilizer y/n). UNUSED
+# sect7 is household level (chemical fertilizer y/n). UNUSED, since redundant by sect4
 #sect7_pp_w1 <- read_csv("../lsms_data/ethiopia/sect7_pp_w1.csv")
 #sect7_pp_w2 <- read_csv("../lsms_data/ethiopia/sect7_pp_w2.csv")
 #sect7_pp_w3 <- read_csv("../lsms_data/ethiopia/sect7_pp_w3.csv")
@@ -69,28 +86,17 @@ sect4_pp_w3 <- read_csv("../lsms_data/ethiopia/sect4_pp_w3.csv")
 
 
 
-# Plan
-
-We"ll do fertilizer separately from Pest/herb/fung data. Since data formats are almost same across all waves, will do the following:
-
-1) join each wave"s data with wave"s location data
-2) apply relevant transformations, then do sf_join to assign a zone geometry object & NAME_2 to each row
-3) group by NAME_2
-4) merge GAHI + LSMS by NAME_2 and year. 
-
-# fertilizer data
-
+# LSMS geovariables (location data)
 
 ```{r}
-# get location data (Lon/Lat), and need to join later tables by ea_id.
+# get location data (Lon/Lat) for each household_id
 geo1 <- read_csv("../lsms_data/ethiopia/pub_eth_householdgeovariables_y1.csv")
 loc1 <- geo1 %>% select(household_id, longitude=LON_DD_MOD, latitude=LAT_DD_MOD)
 
+# for wave2/3, we use household_id2 (household_id applicable if household was sampled from wave1)
 geo2 <- read_csv("../lsms_data/ethiopia/Pub_ETH_HouseholdGeovars_Y2.csv")
 loc2 <- geo2 %>% select(household_id2, longitude=lon_dd_mod, latitude=lat_dd_mod)
 
-
-#   the fertilizer file is missing ea_id2, so we need tot use household_id2 to join here. 
 geo3 <- read_csv("../lsms_data/ethiopia/ETH_HouseholdGeovars_y3.csv")
 loc3 <- geo3 %>% select(household_id2, longitude=lon_dd_mod, latitude=lat_dd_mod)
 
@@ -102,12 +108,11 @@ loc3
 
 
 ```{r}
-
+# selecting relevant columns 
 wave1 <- sect3_pp_w1 %>% select(household_id, region=saq01, zone=saq02, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25, quant_urea=pp_s3q16_a, quant_dap=pp_s3q19_a, area=pp_s3q05_a) %>% drop_na(fert, household_id)
 
 wave2 <- sect3_pp_w2 %>% select(household_id2, region=saq01, zone=saq02, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25, quant_urea=pp_s3q16_a, quant_dap=pp_s3q19_a, area=pp_s3q05_a) %>% drop_na(fert, household_id2)
 
-# wave 3 has location data by ea_id2, so we need to use household_id2 to match with the ea_id2 to finally get the location data
 wave3 <- sect3_pp_w3 %>% select(household_id2, region=saq01, zone=saq02, fert=pp_s3q14, urea=pp_s3q15, dap=pp_s3q18, manure=pp_s3q21, compost=pp_s3q23, organic_fert=pp_s3q25, quant_urea=pp_s3q16, quant_dap=pp_s3q19, area=pp_s3q05_a) %>% drop_na(fert, household_id2)
 
 wave1
@@ -127,7 +132,7 @@ so quantity/area is in kg/m^2
 
 
 ```{r}
-
+# joining fertilizer data with locations (lat/lon)
 wave1_j <- inner_join(wave1, loc1) 
 wave1_j
 
@@ -142,7 +147,7 @@ wave3_j
 
 
 ```{r}
-# add countryname/year data, and combine into one frame
+# add countryname/year columns, and combine into one frame
 w1_fert <- data.frame(country="ethiopia", start_yr = 2011, end_yr = 2012, wave1_j, stringsAsFactors = F) 
 w2_fert <- data.frame(country="ethiopia", start_yr = 2013, end_yr = 2014, wave2_j, stringsAsFactors = F)
 w3_fert <- data.frame(country="ethiopia", start_yr = 2015, end_yr = 2016, wave3_j, stringsAsFactors = F)
@@ -151,81 +156,107 @@ fert
 ```
 
 ```{r}
-# handle missing long/lat data - only 8 cases
+# handle missing lon/lat data 
 fert <- fert[complete.cases(fert$longitude, fert$latitude), ]
+# store lon/lat cols for later
+f_lon <- fert$longitude 
+f_lat <- fert$latitude
 ```
 
 ```{r}
 # spatial join with location data - assigns each lon/lat pair to a zone 
-fert_sf <- st_as_sf(x=fert, coords=c("longitude", "latitude"), crs= "+proj=longlat +datum=WGS84 +nodefs")
+fert_sf <- st_as_sf(x=fert, coords=c("longitude", "latitude"), crs=4326)
+fert_sf <- st_transform(fert_sf, crs=3857)
+fert_sf
 
-fert_joined  <- st_join(fert_sf, eth_zone_sf, left=FALSE) %>% select(c(1:15), NAME_2)
-```
-
-```{r}
+fert_joined  <- st_join(fert_sf, eth_zone_sf, left=FALSE) %>% select(c(1:15), NAME_1, NAME_2)
 fert_df <- fert_joined %>% st_set_geometry(NULL)
 fert_df
 ```
 
 ```{r}
-# reordering
-fert_only <- fert_df %>% select(country, start_yr, end_yr, household_id, NAME_2, fert, urea, dap, manure, compost, organic_fert) %>% mutate(NAME_2=as.character(NAME_2))
+# reordering columns
+fert_only <- fert_df %>% select(country, start_yr, end_yr, household_id, NAME_1, NAME_2, fert, urea, dap, manure, compost, organic_fert) %>% mutate(NAME_1=as.character(NAME_1), NAME_2=as.character(NAME_2))
 fert_only
+```
 
-# quantity data
-fert_quant <- fert_df %>% select(country, start_yr, end_yr, household_id, NAME_2, quant_urea, quant_dap, area) %>% filter(complete.cases(.))
-fert_quant
+# Fertilizer Quantity Data
+```{r}
+fert_quant <- fert_df %>% select(country, start_yr, end_yr, household_id, NAME_1, NAME_2, quant_urea, quant_dap, area) %>% mutate(total_quant = quant_urea + quant_dap) %>% drop_na()
+```
+
+We have some obvious outliers - these might warrant removal later.
+```{r}
+summary(fert_quant$area)
+summary(fert_quant$quant_urea)
+summary(fert_quant$quant_dap)
+summary(fert_quant$total_quant)
 ```
 Remark: we have about 70k observations for fert data, but only about 7k observations for quantity/area. When we group by household, this number will decrease further.
 
-# applying transformations to fert_only
+```{r}
+plot(fert_quant$quant_urea)
+```
+
+Not sure what to do with these outliers.
+```{r}
+fert_quant[fert_quant$quant_urea > 2000, ]
+```
+Indeed we can see what happens when we don't remove extreme values - so let's remove them? seems highly unlikely that one person used 2500 kg of fertilizer...
+
+# Cleaning/Transforming Fertilizer Data
 
 ```{r}
-
-# 1 encoded as YES
-# 2 encoded as NO - wish to change to 0
+# LSMS data has 1 encoded as YES, 2 encoded as NO - we will change all 2s to 0s
 recode <- function(x) ifelse(x == 2 | x == 0, 0, 1)
 fert_only <- fert_only %>% mutate_at(c("fert", "urea", "dap", "manure", "compost", "organic_fert"), recode)
 
 # handling NAs - assume that if fert is 0 then no fertilizer was used, so set other columns to 0
-# remark: dot in list is essentially a placeholder for all variables that we want to pass to it
-# remark2: funs is deprecated in favor of list in dplyr 0.8.0
+# remark 1: dot in list is essentially a placeholder for all variables that we want to pass to it
+# remark 2: funs is deprecated in favor of list in dplyr 0.8.0
 handleNA <- function(x, y) ifelse(x == 0, 0, y)
 fert_only <- fert_only %>% mutate_at(c("urea", "dap", "manure", "compost", "organic_fert"), list(~handleNA(fert, .)) )
 
 
 # summarize fertilizer use into 3 dummy vars: organic, inorganic, overall
+# note that there is a fertilizer column from the LSMS data, but we're creating our own just in case the
+# data is unreliable
 fert_only <- fert_only %>%
-  mutate(
-    organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
+  mutate(organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
     inorganic_fert_dummy = as.numeric((urea+dap) > 0),
     fert_dummy = as.numeric((fert+urea+dap+manure+compost>0)))
 
-# compute number of uses per zone|unique household
-# see above function for indicator. final NAs are handled here.
-# for each household: if all obs are NA then return NA and drop, else return 1 if atleast one member used fertilizer or 0
-fert_by_hh <- fert_only %>% group_by(country, start_yr, end_yr, NAME_2, household_id) %>%
+# compute number of uses per unique household using custom indicator function.
+# final NAs are handled here.
+fert_by_hh <- fert_only %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2, household_id) %>%
   summarize_all(indicator) %>% drop_na()
 
 # compute zone averages
-fert_avg <- fert_by_hh %>% select(-household_id) %>% group_by(country, start_yr, end_yr,  NAME_2) %>% summarize_all(mean)
+fert_avg <- fert_by_hh %>% select(-household_id) %>% group_by(country, start_yr, end_yr,  NAME_1, NAME_2) %>% summarize_all(mean)
 
 # compute count of households/zone
 fert_avg$num_hh_fert <- (fert_by_hh %>% tally())$n
 fert_avg
-
 ```
 
-# applying transformations to fert_quant
+# Applying Transformations to Fert Quantity Data
 ```{r}
-# per zone: take total quantity/total area
-fert_quant_avg <- fert_quant %>% group_by(country, start_yr, end_yr, NAME_2) %>% summarize(total_urea = sum(quant_urea), total_dap=sum(quant_dap), total_area = sum(area), urea_use = total_urea/total_area, dap_use = total_dap/total_area, combined_use = (total_urea+total_dap)/total_area) 
-fert_quant_avg$num_hh_quant <- (fert_quant %>% group_by(country, start_yr, end_yr, NAME_2) %>% tally())$n
+# we want the average household usage, so we'll just compute an average for each household, and then compute an average over households.
+fert_quant_hh <- fert_quant %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2, household_id) %>% 
+  summarize(urea_use = mean(quant_urea/area), dap_use = mean(quant_dap/area), iofert_use = mean((quant_urea + quant_dap)/area))
+
+# compute the mean usage of each zone (over households)
+fert_quant_avg <- fert_quant_hh %>% select(-household_id) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_all(mean)
+
+# compute the number of households per zone 
+fert_quant_avg$num_hh_quant <- (fert_quant_hh %>% tally())$n
 fert_quant_avg
 ```
 
 
 ```{r}
+# full join used in order to preserve data from both sets - however we should expect it to be like a 
+# left join, since there are more observations from fert_avg
 fert <- full_join(fert_avg, fert_quant_avg)
 fert
 ```
@@ -233,9 +264,7 @@ fert
 
 # LSMS pesticide/herbicide/fungicide data
 
-in retrospect, could have merged location data using household_id, but same result.
-
-Note: no data on quantity used is availible.
+Note: no data on quantity used is available.
 
 ```{r}
 w1_phf <- sect4_pp_w1 %>% select( household_id, region=saq01, zone=saq02, prevention=pp_s4q04, pest=pp_s4q05, herb=pp_s4q06, fung=pp_s4q07) %>% drop_na(household_id, prevention) 
@@ -267,11 +296,12 @@ phf
 # handle missing long/lat data - only 4 cases
 phf <- phf[complete.cases(phf$longitude, phf$latitude), ]
 # spatial join with location data - assigns each lon/lat pair to a zone 
-phf_sf <- st_as_sf(x=phf, coords=c("longitude", "latitude"), crs= "+proj=longlat +datum=WGS84 +nodefs")
+phf_sf <- st_as_sf(x=phf, coords=c("longitude", "latitude"), crs=4326)
+phf_sf <- st_transform(phf_sf, crs=3857)
 
 phf_joined <- st_join(phf_sf, eth_zone_sf, left=FALSE)
 phf_df <- phf_joined %>% st_set_geometry(NULL) 
-phf_df <- phf_df %>% mutate(NAME_2=as.character(NAME_2)) %>% select(country, start_yr, end_yr, NAME_2, household_id, prevention, pest, herb, fung) 
+phf_df <- phf_df %>% mutate(NAME_1=as.character(NAME_1), NAME_2=as.character(NAME_2)) %>% select(country, start_yr, end_yr, NAME_1, NAME_2, household_id, prevention, pest, herb, fung) 
 phf_df
 ```
 
@@ -289,11 +319,11 @@ handleNA <- function(x, y) ifelse(x == 0, 0, y)
 phf <- phf_df %>% mutate_at(c("pest", "herb", "fung"), list(~handleNA(prevention, .)) )
 
 
-phf_df <- phf_df %>% group_by(country, start_yr, end_yr, NAME_2, household_id) %>% 
+phf_df <- phf_df %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2, household_id) %>% 
   summarize_all(indicator) %>% drop_na()
 
 # compute zone avgs
-phf_avg <- phf_df %>% select(-household_id) %>% group_by(country, start_yr, end_yr, NAME_2) %>% summarize_all(mean)
+phf_avg <- phf_df %>% select(-household_id) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_all(mean)
 
 # compute zone counts
 phf_avg$num_hh_phf <- (phf_df %>% tally())$n
@@ -309,56 +339,104 @@ eth_lsms
 # GAHI prevalence data
 ```{r}
 africa <- read_csv("../GAHI/data/africa_data.csv")
-eth <- africa %>% filter(country_title == "Ethiopia") %>% select(publication_year, prevalence, number_examined, number_positive, longitude, latitude) %>% drop_na()
-eth_sf <- st_as_sf(x=eth, coords=c("longitude", "latitude"), crs= "+proj=longlat +datum=WGS84 +nodefs")
+eth <- africa %>% filter(country_title == "Ethiopia") %>% select(publication_year, prevalence, number_examined, number_positive, gahi_lon=longitude, gahi_lat=latitude) %>% drop_na()
+eth_sf <- st_as_sf(x=eth, coords=c("gahi_lon", "gahi_lat"), crs=4326) # assume that CRS is 4326 (typical lon/lat)
+eth_sf <- st_transform(eth_sf, crs=3857) # convert to 3857 (mercator/planar)
+
 #plot(st_geometry(sp), axes=TRUE)
 #plot(africa_pt, pch=1, col="red", add=TRUE)
 joined_gahi <- st_join(eth_zone_sf, eth_sf, left=FALSE)
 joined_gahi
 ```
 
-
-
 ```{r}
-eth_gahi <- joined_gahi %>% select(publication_year, number_examined, number_positive, NAME_2) %>% group_by(publication_year, NAME_2) %>% summarize(prevalence=sum(number_positive)/sum(number_examined), num_examined=sum(number_examined), num_positive=sum(number_positive))
+eth_gahi <- joined_gahi %>% select(publication_year, number_examined, number_positive, NAME_1, NAME_2) %>% group_by(publication_year, NAME_1, NAME_2) %>% summarize(prevalence=sum(number_positive)/sum(number_examined), num_examined=sum(number_examined), num_positive=sum(number_positive))
 eth_gahi 
 ```
 
 
 
 ```{r}
-eth_gahi_lsms<- inner_join(eth_gahi, eth_lsms, by = c("publication_year" = "start_yr", "NAME_2" = "NAME_2")) %>% st_set_geometry(NULL)
+eth_gahi_lsms<- inner_join(eth_gahi, eth_lsms, by = c("publication_year" = "end_yr", "NAME_1" = "NAME_1", "NAME_2" = 'NAME_2')) 
+
 eth_gahi_lsms
 ```
 
 
+
+
 # Final dataset 
 To summarize, lsms data was outer joined together, and then lsms + gahi was inner joined.
+The following rows represent entries where both GAHI and LSMS data exist. Note that we are primarily limited by the lack of GAHI data (with only one case study from 2016).
+
 ```{r}
-eth_final <- eth_gahi_lsms %>% select(country, zone=NAME_2, gahi_lsms_start_yr=publication_year, lsms_end_yr=end_yr, prevalence, num_positive, num_examined, fert, urea, dap, manure, compost, organic_fert, organic_fert_dummy, inorganic_fert_dummy, fert_dummy, num_hh_fert, total_urea, total_dap, total_area, urea_use, dap_use, num_hh_quant, prevention, pest, herb, fung, num_hh_phf)
+eth_final <- eth_gahi_lsms %>% select(country, level1_name = NAME_1, level2_name=NAME_2, gahi_lsms_end_yr=publication_year, prevalence, num_positive, num_examined, fert, urea, dap, manure, compost, organic_fert, organic_fert_dummy, inorganic_fert_dummy, fert_dummy, num_hh_fert, urea_use, dap_use, iofert_use, num_hh_quant, prevention, pest, herb, fung, num_hh_phf, geometry) 
 eth_final
 ```
 
+REMARK: need to look at urea use for sidama, end_yr = 2014. there's an outlier there skewing the data.
 
+
+# Exporting Final Data
 ```{r, eval=FALSE}
-#exporting: simply run to write file
+eth_final <- eth_final %>% st_set_geometry(NULL)
 write_csv(eth_final, "../results/eth_final.csv")
 ```
 
 
-# Plots
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Plots of GAHI+LSMS combined data
+
+```{r}
+ggplot(eth_final) + geom_sf(aes(fill = prevalence)) + facet_wrap(~gahi_lsms_end_yr) + scale_x_continuous(breaks = seq(35, 45, 4)) + ggtitle('ETH Prevalence')
+```
+
+```{r}
+ggplot(eth_final) + geom_sf(aes(fill=inorganic_fert_dummy)) + facet_wrap(~gahi_lsms_end_yr) + scale_x_continuous(breaks = seq(35, 45, 4)) + ggtitle('ETH % Households using Inorganic Fertilizer')
+```
+
 
 
 ```{r}
-pairs(~prevalence + fert + urea + dap + pest + herb + fung, data=eth_final)
+ggplot(eth_final) + geom_point(aes(x=inorganic_fert_dummy, y=prevalence)) + ggtitle('Prevalence vs Inorganic Fert')
 ```
 
-need more data!
+
+# Plots of ALL data
+
+```{r}
+ggplot((eth_gahi %>% filter(publication_year >= 2011))) + geom_sf(aes(fill=prevalence)) + facet_wrap(~publication_year) + scale_x_continuous(breaks = seq(35, 45, 4)) + ggtitle('ETH GAHI Prevalence from 2011-2016')
+```
+
+
+```{r}
+ggplot((eth_sf %>% filter(publication_year >= 2011))) + geom_sf() + facet_wrap(~publication_year) + scale_x_continuous(breaks = seq(35, 45, 4)) + ggtitle('ETH GAHI Original Locations')
+```
 
 
 
-
-
-
+```{r}
+eth_lsms_geom <- inner_join(eth_lsms, eth_zone_sf)
+g <- ggplot(eth_lsms_geom) + geom_sf(aes(fill=inorganic_fert_dummy)) + facet_wrap(~end_yr) 
+g + theme(axis.text = element_blank(), axis.ticks = element_blank()) + ggtitle('ETH LSMS % Households using Inorganic Fert')
+``` 
 
 
