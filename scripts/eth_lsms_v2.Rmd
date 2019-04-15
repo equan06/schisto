@@ -370,7 +370,11 @@ To summarize, lsms data was outer joined together, and then lsms + gahi was inne
 The following rows represent entries where both GAHI and LSMS data exist. Note that we are primarily limited by the lack of GAHI data (with only one case study from 2016).
 
 ```{r}
+<<<<<<< HEAD
 eth_final <- eth_gahi_lsms %>% select(country, level1_name = NAME_1, level2_name=NAME_2, gahi_lsms_end_yr=publication_year, prevalence, num_positive, num_examined, fert, urea, dap, manure, compost, organic_fert, organic_fert_dummy, inorganic_fert_dummy, fert_dummy, num_hh_fert, urea_use, dap_use, iofert_use, num_hh_quant, prevention, pest, herb, fung, num_hh_phf, geometry) 
+=======
+eth_final <- eth_gahi_lsms %>% select(country, level2_name=NAME_2, gahi_lsms_start_yr=publication_year, lsms_end_yr=end_yr, prevalence, num_positive, num_examined, fert, urea, dap, manure, compost, organic_fert, organic_fert_dummy, inorganic_fert_dummy, fert_dummy, num_hh_fert, total_urea, total_dap, total_area, urea_use, dap_use, num_hh_quant, prevention, pest, herb, fung, num_hh_phf)
+>>>>>>> 5834bf48ebdfd48e93e709424c135455df68318c
 eth_final
 ```
 

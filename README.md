@@ -8,6 +8,9 @@ Relevant raw data is in lsms_data/country_name.
 ## Results
 Results by country are in /results.
 
+## Shapefiles
+[GADM](https://gadm.org/index.html)
+
 ## Data Dict.
 ### Ethiopia
 Statistics are computed by % usage by households per zone.
