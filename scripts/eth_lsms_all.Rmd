@@ -18,7 +18,9 @@ knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
 
 ```{r}
 library(sf)
-library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(readr)
 ```
 
 # Custom Functions
@@ -136,23 +138,9 @@ fert
 
 ```{r}
 # eliminate missing lon/lat data 
-fert <- fert[complete.cases(fert$longitude, fert$latitude), ]
+fert_df <- fert[complete.cases(fert$longitude, fert$latitude), ]
 ```
 
-```{r}
-# spatial join with location data - assigns each lon/lat pair to a zone 
-fert_sf <- st_as_sf(x=fert, coords=c("longitude", "latitude"), crs=4326)
-fert_sf <- st_transform(fert_sf, crs=3857)
-
-fert_joined  <- st_join(eth_zone_sf, fert_sf, left=FALSE) 
-fert_joined
-```
-
-```{r}
-# reordering columns
-fert_df <- fert_joined %>% select(country, start_yr, end_yr, household_id, holder_id, parcel_id, field_id, NAME_1, NAME_2, fert, urea, dap, manure, compost, organic_fert, quant_urea, quant_dap, area) %>% mutate(NAME_1=as.character(NAME_1), NAME_2=as.character(NAME_2))
-fert_df
-```
 
 
 
@@ -246,7 +234,7 @@ eth_lsms
 ```
 
 ```{r}
-eth_lsms <- eth_lsms %>% rename(fert_rep_yn = fert, urea_yn = urea, dap_yn = dap, manure_yn = manure, compost_yn = compost, ofert_rep_yn = organic_fert, ofert_yn = organic_fert_dummy, iofert_yn = inorganic_fert_dummy, fert_yn = fert_dummy)
+eth_lsms <- eth_lsms %>% rename(fert_rep_yn = fert, urea_yn = urea, dap_yn = dap, manure_yn = manure, compost_yn = compost, ofert_rep_yn = organic_fert, ofert_yn = organic_fert_dummy, iofert_yn = inorganic_fert_dummy, fert_yn = fert_dummy) %>% select(-c('area', 'longitude', 'latitude'), c('area', 'longitude', 'latitude'))
 eth_lsms
 ```
 

@@ -1,0 +1,171 @@
+---
+title: "Ethiopia LSMS Analysis"
+author: Elliot Quan
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(readr)
+```
+
+
+```{r}
+# auxiliary function for handling sums of NA vectors
+# handles NA by returning NA if all are NA
+sumNA <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(sum(x, na.rm=TRUE))
+  }
+}
+
+# same as above, except mean
+meanNA <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(mean(x, na.rm=TRUE))
+  }
+}
+
+# take a vector of inputs: if at least 1 input is 1, then return 1 else 0.
+# handles NA by returning NA if all are NA
+indicator <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else if (sum(x, na.rm=TRUE) > 0) {
+    return(1)
+  } else {
+    return(0)
+  }
+}
+```
+
+# Description
+The main goal of this file is to do an EDA using the ETH LSMS + GAHI data. 
+
+TODO: group by household, then summarize indicator columns using custom indicator function, and aggregate quantity/area by 
+
+```{r}
+lsms <- read_csv('../results/eth_lsms_full.csv')
+lsms
+```
+
+```{r}
+# extracting lon/lat for each household
+lsms_locations <- unique(lsms %>% select(country, start_yr, end_yr, household_id, longitude, latitude))
+lsms_locations
+
+```
+
+```{r}
+# grouping by household with indicators first
+indic_hh <- lsms %>% select(-c(holder_id, parcel_id, field_id)) %>% group_by(country, start_yr, end_yr, household_id) %>% summarize_at(vars(contains('yn')), indicator)
+indic_hh
+```
+
+```{r}
+# adding locations data back
+with_loc <- indic_hh %>% inner_join(lsms_locations)
+with_loc
+```
+
+
+```{r}
+# converting the df to an sf object. we each lon/lat pair is converted to a geometry (point)
+# default crs for long/lat is WGS84 (EPSG: 4326)
+sf1 <- st_as_sf(x=with_loc, coords=c('longitude', 'latitude'), crs=4326)
+# transform to mercator (EPSG: 3857)
+sf1 <- st_transform(sf1, crs=3857)
+sf1
+```
+
+
+
+```{r}
+# shapefile
+eth_zone <- st_read("../shapefiles/eth/GADM/gadm36_ETH_2.shp")
+eth_zone_sf <- st_transform(eth_zone, crs=3857) # convert to mercator/planar (3857)
+eth_zone_sf <- eth_zone_sf %>% select(NAME_1, NAME_2)
+eth_zone_sf
+```
+
+
+```{r}
+# inner spatial join to get NAME_1, NAME_2
+temp <- st_join(sf1, eth_zone_sf, left=FALSE)
+temp
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+# grouping by NAME_1, NAME_2
+temp1 <- temp %>% select(-household_id) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_all(meanNA)
+temp1
+```
+
+
+```{r}
+# spatial join again now to get back the original polygon associated with each NAME_2. this allows us to plot.
+indic_joined <- st_join(eth_zone_sf, temp1, left=FALSE)
+indic_joined
+```
+
+```{r}
+# now we can plot all of the above variables
+ggplot(indic_joined) + geom_sf(aes(fill=iofert_yn)) + facet_wrap(end_yr~.) + ggtitle('% Households using Inorganic Fert')
+ggplot(indic_joined) + geom_sf(aes(fill=fert_yn)) + facet_wrap(end_yr~.) + ggtitle('% Households using Fert')
+```
+
+Now let's look at the continuous data (the quantity/area stuff). Since quantity observations are done at the household > parcel > field level, we'll 
+
+
+```{r}
+
+quant_hh <- lsms %>% select(-c(holder_id, parcel_id, field_id)) %>% group_by(country, start_yr, end_yr, household_id) %>% summarize_at(vars(contains('quant'),  contains('area')), sumNA)
+quant_hh
+```
+
+```{r}
+# converting the df to an sf object. we each lon/lat pair is converted to a geometry (point)
+# default crs for long/lat is WGS84 (EPSG: 4326)
+sf2 <- st_as_sf(x=lsms_locations, coords=c('longitude', 'latitude'), crs=4326)
+# transform to mercator (EPSG: 3857)
+sf2 <- st_transform(sf2, crs=3857)
+sf2
+
+quant_loc <- inner_join(quant_hh, sf2)
+quant_loc 
+```
+
+
+```{r}
+quant_sf <- st_as_sf(quant_loc, crs=3857)
+```
+
+```{r}
+alpha <- st_join(quant_sf, eth_zone_sf, left=FALSE) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize(quant_urea = sumNA(quant_urea), quant_dap = sumNA(quant_dap), quant_total = quant_urea + quant_dap, area = sumNA(area)) 
+alpha
+```
+
+```{r}
+quant_joined <- st_join(eth_zone_sf, alpha, left=FALSE)
+ggplot(quant_joined) + geom_sf(aes(fill=log(quant_total))) + facet_wrap(start_yr~.) + ggtitle('Total Inorganic Fertilizer Usage across Households  (kg)')
+ggplot(quant_joined) + geom_sf(aes(fill=area)) + facet_wrap(start_yr~.) + ggtitle('Total Field Area across Households')
+```
+
+
+```{r}
+aggregated <- quant_joined
+```
+

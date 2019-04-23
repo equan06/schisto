@@ -14,7 +14,6 @@ library(readr)
 library(dplyr)
 library(tidyr)
 library(dummies)
-library(haven)
 ```
 
 
@@ -89,7 +88,7 @@ This notebook generates a csv file where each record corresponds to a unique hou
 
 # Shapefiles 
 
-from GADM. data is at the 2nd administrative level (Local Govt Areas)
+We are using level 2 GADM shapefiles (2nd level of subdivision). By default the datum is WGS84 (crs=4326). We will convert to mercator (crs=3857).
 
 ```{r}
 nga_sf <- readRDS('../shapefiles/nga/GADM/gadm36_NGA_2_sf.rds')
@@ -216,7 +215,7 @@ fert
 
 
 ```{r}
-# for each of leftover, free, bought1, bought2, check that the type matches the desired type. if so, then add that quantity to the sum and return the sum.
+# for each of leftover, free, bought1, bought2, check that the type matches the desired type. if so, then add that quantity to the sum and return the sum of the quants.
 agg_quant <- function(type, df) {
   return(ifelse(df$leftover_type == type, df$leftover_quant, 0) + ifelse(df$free_type == type, df$free_quant, 0) + ifelse(df$bought1_type == type, df$bought1_quant, 0) + ifelse(df$bought2_type == type, df$bought2_quant, 0))
 }
@@ -236,7 +235,12 @@ fert
 
 
 ```{r}
-fert_df <- fert %>% select(country, start_yr, end_yr, hhid, plotid, area, fert_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, total_quant, longitude, latitude)
+fert <- fert %>% rename(fert_rep_yn = fert_yn) %>% mutate(ofert_yn = comp_manure_yn, iofert_yn = as.numeric((npk_yn + urea_yn) > 0), fert_yn = as.numeric((ofert_yn + iofert_yn + other_yn) > 0)) 
+fert
+```
+
+```{r}
+fert_df <- fert %>% select(country, start_yr, end_yr, zone, state, hhid, plotid, area, fert_rep_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, ofert_yn, iofert_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, total_quant, longitude, latitude)
 fert_df
 ```
 
@@ -260,17 +264,12 @@ pest1 <- w1_pest %>% select(hhid, plotid, pest_yn = s11cq1, pest_quant = s11cq2a
 pest3 <- w3_pest %>% select(hhid, plotid, pest_yn =s11c2q1, pest_quant = s11c2q2a, pest_quant_unit = s11c2q2b, herb_yn = s11c2q10, herb_quant = s11c2q11a, herb_quant_unit = s11c2q11b) %>% drop_na(pest_yn, herb_yn)
 pest1
 pest3
-
-pest1_j <- inner_join(pest1, loc1_mappings)
-pest3_j <- inner_join(pest3, loc3_mappings)
-pest1_j
-pest3_j
 ```
 
 
 ```{r}
-w1_p <- data.frame(country="nigeria", start_yr = 2010, end_yr = 2011, pest1_j, stringsAsFactors = F) 
-w3_p <- data.frame(country="nigeria", start_yr = 2015, end_yr = 2016, pest3_j, stringsAsFactors = F)
+w1_p <- data.frame(country="nigeria", start_yr = 2010, end_yr = 2011, pest1, stringsAsFactors = F) 
+w3_p <- data.frame(country="nigeria", start_yr = 2015, end_yr = 2016, pest3, stringsAsFactors = F)
 pest_c <- rbind(w1_p, w3_p)
 pest_c
 ```
@@ -293,12 +292,22 @@ pest_df
 
 # Merging Fertilizer + Pesticide
 
-```{r}
+merge on country, start_yr, end_yr, hhid, plotid. To preserve the wave2 fertilizer data, we do a left join (since w2 pesticide data is missing).
 
+```{r}
+final_df <- fert_df %>% left_join(pest_df, by = c('country', 'start_yr', 'end_yr', 'hhid', 'plotid'))
+final_df 
 ```
 
+```{r}
+final <- final_df %>% select(country, start_yr, end_yr, zone, state, hhid, plotid,  fert_rep_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, ofert_yn, iofert_yn, pest_yn,  herb_yn,  quant_npk = npk_quant, quant_urea = urea_quant, quant_comp_manure = comp_manure_quant, quant_other = other_quant, quant_total = total_quant,  quant_pest = pest_quant, quant_herb = herb_quant, area, longitude, latitude) %>% mutate(quant_iofert = quant_npk + quant_urea) %>% select(-c('area', 'longitude', 'latitude'), c('area', 'longitude', 'latitude'))
+final
+```
 
-
+```{r, eval=FALSE}
+# write the df only 
+write_csv(final, '../results/nga_lsms_full.csv')
+```
 
 
 

@@ -342,10 +342,15 @@ africa <- read_csv("../GAHI/data/africa_data.csv")
 eth <- africa %>% filter(country_title == "Ethiopia") %>% select(publication_year, prevalence, number_examined, number_positive, gahi_lon=longitude, gahi_lat=latitude) %>% drop_na()
 eth_sf <- st_as_sf(x=eth, coords=c("gahi_lon", "gahi_lat"), crs=4326) # assume that CRS is 4326 (typical lon/lat)
 eth_sf <- st_transform(eth_sf, crs=3857) # convert to 3857 (mercator/planar)
+eth_sf
 
 #plot(st_geometry(sp), axes=TRUE)
 #plot(africa_pt, pch=1, col="red", add=TRUE)
 joined_gahi <- st_join(eth_zone_sf, eth_sf, left=FALSE)
+joined_gahi
+```
+
+```{r}
 joined_gahi
 ```
 
