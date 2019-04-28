@@ -5,7 +5,7 @@ output: html_document
 ---
 
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -56,41 +56,6 @@ The main goal of this file is to do an EDA using the ETH LSMS + GAHI data.
 
 TODO: group by household, then summarize indicator columns using custom indicator function, and aggregate quantity/area by 
 
-```{r}
-lsms <- read_csv('../results/eth_lsms_full.csv')
-lsms
-```
-
-```{r}
-# extracting lon/lat for each household
-lsms_locations <- unique(lsms %>% select(country, start_yr, end_yr, household_id, longitude, latitude))
-lsms_locations
-
-```
-
-```{r}
-# grouping by household with indicators first
-indic_hh <- lsms %>% select(-c(holder_id, parcel_id, field_id)) %>% group_by(country, start_yr, end_yr, household_id) %>% summarize_at(vars(contains('yn')), indicator)
-indic_hh
-```
-
-```{r}
-# adding locations data back
-with_loc <- indic_hh %>% inner_join(lsms_locations)
-with_loc
-```
-
-
-```{r}
-# converting the df to an sf object. we each lon/lat pair is converted to a geometry (point)
-# default crs for long/lat is WGS84 (EPSG: 4326)
-sf1 <- st_as_sf(x=with_loc, coords=c('longitude', 'latitude'), crs=4326)
-# transform to mercator (EPSG: 3857)
-sf1 <- st_transform(sf1, crs=3857)
-sf1
-```
-
-
 
 ```{r}
 # shapefile
@@ -102,70 +67,150 @@ eth_zone_sf
 
 
 ```{r}
-# inner spatial join to get NAME_1, NAME_2
-temp <- st_join(sf1, eth_zone_sf, left=FALSE)
-temp
-```
-
-
-```{r, warning=FALSE, message=FALSE}
-# grouping by NAME_1, NAME_2
-temp1 <- temp %>% select(-household_id) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_all(meanNA)
-temp1
-```
-
-
-```{r}
-# spatial join again now to get back the original polygon associated with each NAME_2. this allows us to plot.
-indic_joined <- st_join(eth_zone_sf, temp1, left=FALSE)
-indic_joined
+# LSMS
+lsms <- read_csv('../results/eth_lsms_full.csv')
+lsms
 ```
 
 ```{r}
-# now we can plot all of the above variables
-ggplot(indic_joined) + geom_sf(aes(fill=iofert_yn)) + facet_wrap(end_yr~.) + ggtitle('% Households using Inorganic Fert')
-ggplot(indic_joined) + geom_sf(aes(fill=fert_yn)) + facet_wrap(end_yr~.) + ggtitle('% Households using Fert')
-```
+# extracting lon/lat for each household
+lsms_locations <- unique(lsms %>% select(country, start_yr, end_yr, household_id, longitude, latitude))
 
-Now let's look at the continuous data (the quantity/area stuff). Since quantity observations are done at the household > parcel > field level, we'll 
-
-
-```{r}
-
-quant_hh <- lsms %>% select(-c(holder_id, parcel_id, field_id)) %>% group_by(country, start_yr, end_yr, household_id) %>% summarize_at(vars(contains('quant'),  contains('area')), sumNA)
-quant_hh
-```
-
-```{r}
-# converting the df to an sf object. we each lon/lat pair is converted to a geometry (point)
+# i may delete these lines later. 
+# converting to ansf object. we each lon/lat pair is converted to a geometry (point)
 # default crs for long/lat is WGS84 (EPSG: 4326)
-sf2 <- st_as_sf(x=lsms_locations, coords=c('longitude', 'latitude'), crs=4326)
+lsms_sf <- st_as_sf(x=lsms_locations, coords=c('longitude', 'latitude'), crs=4326)
 # transform to mercator (EPSG: 3857)
-sf2 <- st_transform(sf2, crs=3857)
-sf2
+lsms_sf <- st_transform(lsms_sf, crs=3857)
+```
 
-quant_loc <- inner_join(quant_hh, sf2)
-quant_loc 
+# Need to figure out a way to get the list of variables of type 1, list of variables of type 2.
+
+One approach is to avoid using geometries at all until we get to household data. we can aggregate separatately, join back together, then we join by with the geometries. 
+
+Then, we can join by zone, and finally join back with the zone geometries. However, when we aggregate at the household level, then we'll have to manually aggregate each column one by one (which is a little tedious).
+
+however, this should allow us to get the final df at the end with 1 geometry.
+
+```{r}
+# grouping by household with indicators first
+indic_hh <- lsms %>% select(-c(holder_id, parcel_id, field_id)) %>% group_by(country, start_yr, end_yr, household_id) %>% summarize_at(vars(matches('yn')), indicator)
+
+quant_hh <- lsms %>% select(-c(holder_id, parcel_id, field_id)) %>% group_by(country, start_yr, end_yr, household_id) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+hh_level <- inner_join(indic_hh, quant_hh, by=c('country', 'start_yr', 'end_yr', 'household_id'))
+hh_level
+```
+
+We do a quick area conversion from m^2 to hectares (divide by 10000)
+```{r}
+hh_level_conv <- hh_level %>% mutate(area = area/10000, quant_iofert = quant_urea + quant_dap)
+```
+
+Now all rows are at hh level. We first merge with the hh locations, then spatial join with the zone shapefile data, and then group by NAME_2 (the second subdivision level).
+
+```{r}
+lsms_sf <- inner_join(hh_level_conv, lsms_locations) %>% st_as_sf(coords=c('longitude', 'latitude'), crs=4326) %>% st_transform(crs=3857)
+
+with_2 <- st_join(lsms_sf, eth_zone_sf, left=FALSE) 
+```
+
+```{r}
+with_2
+```
+
+
+Dealing with Missing/0 areas: there are 296 such cases. We will omit these cases from our analysis.
+```{r}
+nrow(with_2[with_2$area == 0 | is.na(with_2$area) , ])
+```
+
+```{r}
+filtered <- with_2[!(with_2$area == 0 | is.na(with_2$area)), ] 
+```
+
+```{r}
+filtered
+```
+
+Now that zones are introduced,  we need to split the object into indicator and quant. variables, and group separately by mean and then sum. 
+
+```{r}
+a <- filtered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_at(vars(matches('yn')), meanNA)
+
+b <- filtered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+c <- filtered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize(avg_fert_usage = mean(sumNA(quant_iofert)/sumNA(area)))
 ```
 
 
 ```{r}
-quant_sf <- st_as_sf(quant_loc, crs=3857)
+temp <- inner_join(a %>% as.data.frame(), b %>% as.data.frame(),  by=c('country', 'start_yr', 'end_yr', 'NAME_1', 'NAME_2')) %>% inner_join(c %>% as.data.frame(), by=c('country', 'start_yr', 'end_yr', 'NAME_1', 'NAME_2'))
+
+# abusing var names here...
+temp1 <- temp %>% st_as_sf(sf_column_name = 'geometry.x') %>% rename(geometry=geometry.x)
+```
+
+
+
+One more step: to get the geometry back to polygons (of NAME_2), we need to spatial join with eth_zone_sf.
+
+```{r}
+zone_lvl <- st_join(eth_zone_sf, temp1, left=FALSE)
+zone_lvl
+```
+
+Note that there's a second geometry column from the right quant dataframe, but we will never use it.
+
+
+# Plotting by Zone
+
+basic plot of fert distribution by year
+
+```{r}
+p <- ggplot(zone_lvl) + geom_sf(aes(fill=fert_yn)) + facet_wrap(.~start_yr) + theme(axis.text = element_blank()) + ggtitle('Ethiopia: % of Households using Fertilizer')
+print(p)
+ggsave('../plots/eth/fert.png', plot=p, width = 10, height = 4, units='in', dpi=300)
+```
+
+
+
+```{r}
+p <- ggplot(zone_lvl) + geom_sf(aes(fill=avg_fert_usage)) + facet_wrap(.~start_yr) + theme(axis.text=element_blank()) + ggtitle('Ethiopia: Avg. Total Inorganic Fert. Usage (kg/ha)')
+print(p)
+ggsave('../plots/eth/usage.png', plot=p, width=10, height=4, units='in', dpi=300)
+```
+
+# Ethiopia Trends over Time
+
+Let's also do an aggregation to get some country level statistics (so groupby country).
+
+```{r}
+a1 <- filtered %>% group_by(country, start_yr, end_yr) %>% summarize_at(vars(matches('yn')), meanNA)
+
+b1 <- filtered %>% group_by(country, start_yr, end_yr) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+c1 <- filtered %>% group_by(country, start_yr, end_yr) %>% summarize(avg_dap_usage = mean(sumNA(quant_dap)/sumNA(area)), avg_urea_usage = mean(sumNA(quant_urea)/sumNA(area)), avg_fert_usage = mean(sumNA(quant_iofert)/sumNA(area)))
+
+country_lvl <- inner_join(a1 %>% as.data.frame(), b1 %>% as.data.frame(),  by=c('country', 'start_yr', 'end_yr')) %>% inner_join(c1 %>% as.data.frame(), by=c('country', 'start_yr', 'end_yr'))
+country_lvl
+```
+
+These are simple line plots, one point for each year.
+
+```{r}
+p <- ggplot(country_lvl, aes(x=start_yr)) + geom_line(aes(y=avg_dap_usage, color='DAP')) +
+  geom_line(aes(y=avg_urea_usage, color='Urea')) + labs(x='start year', y='avg usage', colour='Fert. Type') + ggtitle('Ethiopia: Avg. Total Fert. Usage (kg/ha) by Households')
+print(p)
+ggsave('../plots/eth/country_usage_time.png', plot=p, width=6, height=4, units='in', dpi=300)
 ```
 
 ```{r}
-alpha <- st_join(quant_sf, eth_zone_sf, left=FALSE) %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize(quant_urea = sumNA(quant_urea), quant_dap = sumNA(quant_dap), quant_total = quant_urea + quant_dap, area = sumNA(area)) 
-alpha
-```
-
-```{r}
-quant_joined <- st_join(eth_zone_sf, alpha, left=FALSE)
-ggplot(quant_joined) + geom_sf(aes(fill=log(quant_total))) + facet_wrap(start_yr~.) + ggtitle('Total Inorganic Fertilizer Usage across Households  (kg)')
-ggplot(quant_joined) + geom_sf(aes(fill=area)) + facet_wrap(start_yr~.) + ggtitle('Total Field Area across Households')
+p <- ggplot(country_lvl, aes(x=start_yr)) + geom_line(aes(y=fert_rep_yn, color='Fert')) + 
+  geom_line(aes(y=urea_yn, color='Urea')) + geom_line(aes(y=dap_yn, color='DAP')) + labs(x='start year', y='% HH used', colour='Fert. Type') + ggtitle('Ethiopia: Avg. % Households using Fertilizer')
+print(p)
+ggsave('../plots/eth/country_avg_percent.png', plot=p, width=6, height=4, units='in', dpi=300)
 ```
 
 
-```{r}
-aggregated <- quant_joined
-```
 
