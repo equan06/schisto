@@ -5,8 +5,8 @@ output: html_document
 ---
 
 
-```{r setup, include=FALSE, message=FALSE, warning=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
 ```
 
 ```{r}
@@ -52,9 +52,7 @@ indicator <- function(x) {
 ```
 
 # Description
-The main goal of this file is to do an EDA using the ETH LSMS + GAHI data. 
-
-TODO: group by household, then summarize indicator columns using custom indicator function, and aggregate quantity/area by 
+The main goal of this file is to do an EDA using the ETH LSMS data.
 
 
 ```{r}
@@ -84,13 +82,9 @@ lsms_sf <- st_as_sf(x=lsms_locations, coords=c('longitude', 'latitude'), crs=432
 lsms_sf <- st_transform(lsms_sf, crs=3857)
 ```
 
-# Need to figure out a way to get the list of variables of type 1, list of variables of type 2.
+Here's the approach: we have categorical (indicator) vars and quantitative vars. To get household level data, we wish to summarize indicators using indicator functions, while summarizing the quantitative data by taking the sum (total quantity/area). 
 
-One approach is to avoid using geometries at all until we get to household data. we can aggregate separatately, join back together, then we join by with the geometries. 
-
-Then, we can join by zone, and finally join back with the zone geometries. However, when we aggregate at the household level, then we'll have to manually aggregate each column one by one (which is a little tedious).
-
-however, this should allow us to get the final df at the end with 1 geometry.
+Once we have household level data, we can then summarize by the second subdivision level by taking averages over both types of data. This will give us the % of households that used an input and the average total quantity used by households. The area data is there to help us normalize input use.
 
 ```{r}
 # grouping by household with indicators first
@@ -113,11 +107,10 @@ Now all rows are at hh level. We first merge with the hh locations, then spatial
 lsms_sf <- inner_join(hh_level_conv, lsms_locations) %>% st_as_sf(coords=c('longitude', 'latitude'), crs=4326) %>% st_transform(crs=3857)
 
 with_2 <- st_join(lsms_sf, eth_zone_sf, left=FALSE) 
-```
 
-```{r}
 with_2
 ```
+
 
 
 Dealing with Missing/0 areas: there are 296 such cases. We will omit these cases from our analysis.
@@ -127,13 +120,11 @@ nrow(with_2[with_2$area == 0 | is.na(with_2$area) , ])
 
 ```{r}
 filtered <- with_2[!(with_2$area == 0 | is.na(with_2$area)), ] 
-```
-
-```{r}
 filtered
 ```
 
-Now that zones are introduced,  we need to split the object into indicator and quant. variables, and group separately by mean and then sum. 
+
+Now that zones are introduced,  we need to split the df into indicator and quant. variables, and group separately by household using mean and sum.
 
 ```{r}
 a <- filtered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_at(vars(matches('yn')), meanNA)
@@ -207,9 +198,9 @@ ggsave('../plots/eth/country_usage_time.png', plot=p, width=6, height=4, units='
 
 ```{r}
 p <- ggplot(country_lvl, aes(x=start_yr)) + geom_line(aes(y=fert_rep_yn, color='Fert')) + 
-  geom_line(aes(y=urea_yn, color='Urea')) + geom_line(aes(y=dap_yn, color='DAP')) + labs(x='start year', y='% HH used', colour='Fert. Type') + ggtitle('Ethiopia: Avg. % Households using Fertilizer')
+  geom_line(aes(y=urea_yn, color='Urea')) + geom_line(aes(y=dap_yn, color='DAP')) + labs(x='start year', y='% HH used', colour='Fert. Type') + ggtitle('Ethiopia: % Households using Fertilizer')
 print(p)
-ggsave('../plots/eth/country_avg_percent.png', plot=p, width=6, height=4, units='in', dpi=300)
+ggsave('../plots/eth/country_percent_fert.png', plot=p, width=6, height=4, units='in', dpi=300)
 ```
 
 

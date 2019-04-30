@@ -1,0 +1,254 @@
+---
+title: "Nigeria Analysis"
+author: "Elliot Quan"
+date: "April 29, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+```{r}
+library(sf)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(readr)
+```
+
+
+```{r}
+# auxiliary function for handling sums of NA vectors
+# handles NA by returning NA if all are NA
+sumNA <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(sum(x, na.rm=TRUE))
+  }
+}
+
+# same as above, except mean
+meanNA <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(mean(x, na.rm=TRUE))
+  }
+}
+
+# take a vector of inputs: if at least 1 input is 1, then return 1 else 0.
+# handles NA by returning NA if all are NA
+indicator <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else if (sum(x, na.rm=TRUE) > 0) {
+    return(1)
+  } else {
+    return(0)
+  }
+}
+```
+
+
+
+# Description
+The main goal of this file is to do an EDA using the Nigeria LSMS data.
+
+
+```{r}
+# shapefile
+nga_zone <- readRDS("../shapefiles/nga/GADM/gadm36_NGA_2_sf.rds")
+nga_zone_sf <- st_transform(nga_zone, crs=3857) # convert to mercator/planar (3857)
+nga_zone_sf <- nga_zone_sf %>% select(NAME_1, NAME_2)
+nga_zone_sf
+```
+
+```{r}
+# LSMS
+lsms <- read_csv('../results/nga_lsms_full.csv')
+lsms
+```
+
+
+```{r}
+# extracting lon/lat for each household
+lsms_locations <- unique(lsms %>% select(country, start_yr, end_yr, hhid, longitude, latitude))
+
+# i may delete these lines later. 
+# converting to an sf object. we each lon/lat pair is converted to a geometry (point)
+# default crs for long/lat is WGS84 (EPSG: 4326)
+lsms_sf <- st_as_sf(x=lsms_locations, coords=c('longitude', 'latitude'), crs=4326)
+# transform to mercator (EPSG: 3857)
+lsms_sf <- st_transform(lsms_sf, crs=3857)
+```
+
+Here's the approach: we have categorical (indicator) vars and quantitative vars. To get household level data, we wish to summarize indicators using indicator functions, while summarizing the quantitative data by taking the sum (total quantity/area). 
+
+Once we have household level data, we can then summarize by the second subdivision level by taking averages over both types of data. This will give us the % of households that used an input and the average total quantity used by households. The area data is there to help us normalize input use.
+
+```{r}
+# grouping by household with indicators first
+indic_hh <- lsms %>% select(-c(plotid)) %>% group_by(country, start_yr, end_yr, hhid) %>% summarize_at(vars(matches('yn')), indicator)
+
+quant_hh <- lsms %>% select(-c(plotid)) %>% group_by(country, start_yr, end_yr, hhid) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+hh_level <- inner_join(indic_hh, quant_hh, by=c('country', 'start_yr', 'end_yr', 'hhid'))
+hh_level
+```
+
+
+We do a quick area conversion from m^2 to hectares (divide by 10000)
+```{r}
+hh_level_conv <- hh_level %>% mutate(area = area/10000)
+```
+
+```{r}
+lsms_sf <- inner_join(hh_level_conv, lsms_locations) %>% st_as_sf(coords=c('longitude', 'latitude'), crs=4326) %>% st_transform(crs=3857)
+
+unfiltered <- st_join(lsms_sf, nga_zone_sf, left=FALSE) 
+
+unfiltered
+```
+
+742 out of the nearly 9k records have missing area data. 
+```{r}
+nrow(unfiltered[unfiltered$area == 0 | is.na(unfiltered$area) , ])
+```
+
+Since this nearly 1/10th of our data, we can do a separate analysis first of the indicator variables (taking the average), and then do a separate analysis with the intact quantity + area data (taking the average).
+
+```{r}
+filtered <- unfiltered[!(unfiltered$area == 0 | is.na(unfiltered$area)), ] 
+filtered
+```
+
+
+Now that zones are introduced,  we need to split the df into indicator and quant. variables, and group separately by household using mean/sum. 
+
+```{r}
+# averaging indicators
+a <- unfiltered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_at(vars(matches('yn')), meanNA)
+
+# summing quant/area
+b <- filtered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+c <- filtered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize(avg_iofert_usage = mean(sumNA(quant_iofert)/sumNA(area)), avg_fert_usage = mean(sumNA(quant_total)/sumNA(area)), avg_pest_usage = mean(sumNA(quant_pest)/sumNA(area)), avg_herb_usage = mean(sumNA(quant_herb)/sumNA(area)))
+```
+
+
+```{r}
+temp <- inner_join(a %>% as.data.frame(), b %>% as.data.frame(),  by=c('country', 'start_yr', 'end_yr', 'NAME_1', 'NAME_2')) %>% inner_join(c %>% as.data.frame(), by=c('country', 'start_yr', 'end_yr', 'NAME_1', 'NAME_2'))
+
+# abusing var names here...
+temp1 <- temp %>% st_as_sf(sf_column_name = 'geometry.x') %>% rename(geometry=geometry.x)
+```
+
+
+
+One more step: to get the geometry back to polygons (of NAME_2), we need to spatial join with eth_zone_sf.
+
+```{r}
+zone_lvl <- st_join(nga_zone_sf, temp1, left=FALSE)
+zone_lvl
+```
+
+
+
+
+# Plotting by Zone
+
+basic plot of fert distribution by year. maybe consider grouping by NAME_1 (about 33 unique areas)
+
+```{r}
+p <- ggplot(zone_lvl) + geom_sf(aes(fill=fert_rep_yn)) + facet_wrap(.~start_yr) + theme(axis.text = element_blank()) + ggtitle('Nigeria: % of Households using Fertilizer')
+print(p)
+ggsave('../plots/nga/fert.png', plot=p, width = 10, height = 4, units='in', dpi=300)
+```
+
+
+
+```{r}
+p <- ggplot(zone_lvl) + geom_sf(aes(fill=log(avg_fert_usage))) + facet_wrap(.~start_yr) + theme(axis.text=element_blank()) + ggtitle('Nigeria: Avg. Total Inorganic Fert. Usage (kg/ha)')
+print(p)
+ggsave('../plots/nga/usage.png', plot=p, width=10, height=4, units='in', dpi=300)
+```
+
+clearly there are outliers in quantity data.
+```{r}
+summary(zone_lvl$avg_fert_usage)
+```
+
+# Trends over Time
+
+Let's also do an aggregation to get some country level statistics (so groupby country).
+
+```{r}
+a1 <- unfiltered %>% group_by(country, start_yr, end_yr) %>% summarize_at(vars(matches('yn')), meanNA)
+
+b1 <- filtered %>% group_by(country, start_yr, end_yr) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+c1 <- filtered %>% group_by(country, start_yr, end_yr) %>% summarize(avg_npk_usage = mean(sumNA(quant_npk)/sumNA(area)), avg_urea_usage = mean(sumNA(quant_urea)/sumNA(area)), avg_fert_usage = mean(sumNA(quant_total)/sumNA(area)), avg_pest_usage = mean(sumNA(quant_pest)/sumNA(area)), avg_herb_usage = mean(sumNA(quant_herb)/sumNA(area)))
+
+country_lvl <- inner_join(a1 %>% as.data.frame(), b1 %>% as.data.frame(),  by=c('country', 'start_yr', 'end_yr')) %>% inner_join(c1 %>% as.data.frame(), by=c('country', 'start_yr', 'end_yr'))
+country_lvl
+```
+
+If we look at 2012-2013 we can see some huge outliers in quantity (namely npk and composite manure). Let's examine this a little more closely.
+
+```{r}
+summary(unfiltered$quant_npk)
+```
+
+```{r}
+summary(unfiltered$quant_comp_manure)
+```
+
+```{r}
+unfiltered[!is.na(unfiltered$quant_comp_manure) & unfiltered$quant_comp_manure > 1000, ]
+```
+
+
+These are simple line plots, one point for each year.
+
+```{r}
+p <- ggplot(country_lvl, aes(x=start_yr)) + 
+  geom_line(aes(y=avg_npk_usage, color='NPK')) +
+  geom_line(aes(y=avg_urea_usage, color='Urea')) + 
+  geom_point(aes(y=avg_npk_usage)) +
+  geom_point(aes(y=avg_urea_usage)) +
+  labs(x='start year', y='avg usage', colour='Fert. Type') + 
+  ggtitle('Nigeria: Avg. Total Fert. Usage (kg/ha) by Households')
+print(p)
+ggsave('../plots/nga/country_fert_usage_time.png', plot=p, width=6, height=4, units='in', dpi=300)
+```
+
+```{r}
+p <- ggplot(country_lvl, aes(x=start_yr)) + 
+  geom_line(aes(y=fert_rep_yn, color='Fert')) + 
+  geom_line(aes(y=urea_yn, color='Urea')) + 
+  geom_line(aes(y=npk_yn, color='NPK')) + 
+  geom_point(aes(y=fert_rep_yn)) + 
+  geom_point(aes(y=urea_yn)) + 
+  geom_point(aes(y=npk_yn)) + 
+  labs(x='start year', y='% HH used', colour='Fert. Type') + 
+  ggtitle('Nigeria: % Households using Fertilizer')
+print(p)
+ggsave('../plots/eth/country_percent_fert.png', plot=p, width=6, height=4, units='in', dpi=300)
+```
+
+```{r}
+p <- ggplot(country_lvl %>% drop_na(herb_yn, pest_yn), aes(x=start_yr)) + 
+  geom_line(aes(y=pest_yn, color='Pesticide')) + 
+  geom_line(aes(y=herb_yn, color='Herbicide')) + 
+  geom_point(aes(y=pest_yn)) +
+  geom_point(aes(y=herb_yn)) +
+  labs(x='start year', y='% HH used', colour='Fert. Type') + 
+  ggtitle('Nigeria: % Households using Pesticides/Herbicides') 
+print(p)
+ggsave('../plots/eth/country_percent_ph.png', plot=p, width=6, height=4, units='in', dpi=300)
+```
+
+
+
