@@ -235,12 +235,12 @@ fert
 
 
 ```{r}
-fert <- fert %>% rename(fert_rep_yn = fert_yn) %>% mutate(ofert_yn = comp_manure_yn, iofert_yn = as.numeric((npk_yn + urea_yn) > 0), fert_yn = as.numeric((ofert_yn + iofert_yn + other_yn) > 0)) 
-fert
+fert1 <- fert %>% rename(fert_rep_yn = fert_yn) %>% mutate(ofert_yn = comp_manure_yn, iofert_yn = as.numeric(select(., matches('npk_yn|urea_yn')) %>% rowSums(na.rm = TRUE) > 0)) %>% mutate( fert_yn = as.numeric(select(., matches('ofert_yn|iofert_yn|other_yn')) %>% rowSums(na.rm=TRUE) > 0))
+fert1
 ```
 
 ```{r}
-fert_df <- fert %>% select(country, start_yr, end_yr, zone, state, hhid, plotid, area, fert_rep_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, ofert_yn, iofert_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, total_quant, longitude, latitude)
+fert_df <- fert1 %>% select(country, start_yr, end_yr, zone, state, hhid, plotid, area, fert_rep_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, ofert_yn, iofert_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, total_quant, longitude, latitude)
 fert_df
 ```
 

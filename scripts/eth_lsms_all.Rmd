@@ -46,7 +46,9 @@ indicator <- function(x) {
     return(0)
   }
 }
+
 ```
+
 
 
 # Shapefile Data (GADM)
@@ -164,13 +166,17 @@ fert_df <- fert_df %>% mutate(quant_urea = handleNA(urea, quant_urea)) %>% mutat
 # note that there is a fertilizer column from the LSMS data, but we're creating our own just in case the
 # data is unreliable
 fert_df <- fert_df %>%
-  mutate(organic_fert_dummy = as.numeric((manure+compost+organic_fert) > 0),
-    inorganic_fert_dummy = as.numeric((urea+dap) > 0),
-    fert_dummy = as.numeric((fert+urea+dap+manure+compost>0)))
+  mutate(organic_fert_dummy = as.numeric(select(., matches('manure|compost|organic_fert')) %>% rowSums(na.rm=TRUE) > 0),
+    inorganic_fert_dummy = as.numeric(select(., matches('urea|dap')) %>% rowSums(na.rm=TRUE) > 0),
+    fert_dummy = as.numeric(select(., matches('fert|urea|dap|manure|compost')) %>% rowSums(na.rm=TRUE) >0))
+
+# remark: the above regex matches any column that contains any of the above words, which may not be desirable later on (i.e. if we want to add quantity data only). however, it doesn't matter if quantity is counted into the indicator, so we'll leave it as is. 
 ```
 
+
+
 ```{r}
-fert_df %>% mutate(usage_urea = quant_urea/area, usage_dap = quant_dap/area, usage_total = (quant_urea + quant_dap) / area)
+fert_df <- fert_df %>% mutate(quant_iofert = select(., matches('quant_dap|quant_urea')) %>% rowSums(na.rm=TRUE), usage_urea = quant_urea/area, usage_dap = quant_dap/area, usage_total = quant_iofert / area)
 ```
 
 

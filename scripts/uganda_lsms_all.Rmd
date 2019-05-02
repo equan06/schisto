@@ -71,17 +71,18 @@ handleNA <- function(x, y) ifelse(x == 0, 0, y)
 # Description
 
 This notebook generates plot level fertilizer information.
-To keep consistency, we will only analyze B files. A files denote the first visit (Jan-Jun), while B files denote the second visit (Jul-Dec) in the year.
+To keep consistency, we will only analyze B files. A files denote the first visit (Jan-Jun), while B files denote the second visit (Jul-Dec) in the year. This is because only 1/2 of the A files were intact, so we'll just use the B files (since all are intact).
+
 
 We will also analyze 09 last since its format differs slightly.
 
-Also, wave 4 has no location data, so we will attempt to link previously surveyed households together. New households will not be included, since they cannot be geolocated for now (although it might be possible via region data). Will look into later.
+Also, wave 4 has no location data, so we will attempt to link previously surveyed households together. New households will not be included, since they cannot be geolocated for now (although it might be possible via region data). Past household ids linking wave 4 to wave3 exists in GSEC1, so it is possible to link households that way. However it requires a bunch of regex cleaning, so we will skip this for now.
 
 
 
 
 
-Plot Area data is in AGSEC4, so we'll need those too. 
+Plot Area data is in AGSEC4, so we'll need those too.  
 ```{r}
 w1_3B <- read_csv('../lsms_data/uganda/w09/1_AGSEC3B.csv')
 w2_3B <- read_csv('../lsms_data/uganda/w10/2_AGSEC3B.csv')
@@ -96,7 +97,11 @@ w4_4B <- read_csv('../lsms_data/uganda/w13/4_AGSEC4B.csv')
 w1_geo <- read_csv('../lsms_data/uganda/w09/1_UNPS_Geovars_0910.csv')
 w2_geo <- read_csv('../lsms_data/uganda/w10/2_UNPS_Geovars_1011.csv')
 w3_geo <- read_csv('../lsms_data/uganda/w11/3_UNPS_Geovars_1112.csv')
+
+
+w4_gsec <- read_csv('../lsms_data/uganda/w13/4_GSEC1.csv')
 ```
+
 
 
 # Fertilizer/Pesticide data
@@ -232,8 +237,12 @@ uga_final
 
 
 ```{r}
-uga<- uga_final %>% select(country, start_yr, end_yr, hhid, plotid, parcelid, ofert_rep_yn, quant_ofert, iofert_rep_yn, type_iofert, quant_iofert, pest_yn, quant_pest, nitrate_quant, phosphate_quant, potash_quant, mixed_quant, nitrate_yn, phosphate_yn, potash_yn, mixed_yn, area, longitude, latitude)
+uga<- uga_final %>% select(country, start_yr, end_yr, hhid, plotid, parcelid, ofert_rep_yn, quant_ofert, iofert_rep_yn, type_iofert, quant_iofert, pest_yn, quant_pest, nitrate_quant, phosphate_quant, potash_quant, mixed_quant, nitrate_yn, phosphate_yn, potash_yn, mixed_yn, area, longitude, latitude) %>% rename(quant_nitrate = nitrate_quant, quant_phosphate = phosphate_quant, quant_potash = potash_quant, quant_mixed = mixed_quant)
 uga
+```
+
+```{r}
+w4
 ```
 
 ```{r, eval=FALSE}
