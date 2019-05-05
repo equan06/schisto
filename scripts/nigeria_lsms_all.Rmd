@@ -148,7 +148,7 @@ fert_w3 <- fert_w3 %>% inner_join(area_w3, by = c('hhid', 'plotid'))
 ```
 
 
-
+Note: in wave3 organic fert is coded differently, but since we don't really care about it (and it is unclear what type is used) we will omit it. 
 
 ```{r}
 fert1 <- fert_w1 %>% select(zone, state, hhid, plotid, area, fert_yn = s11dq1, 
@@ -169,7 +169,9 @@ fert3 <- fert_w3 %>% select(zone, state, hhid, plotid, area, fert_yn = s11dq1,
                             leftover_yn = s11dq2, leftover_type = s11dq3, leftover_quant = s11dq4a, leftover_quant_units = s11dq4b,
                             free_yn = sect11dq6, free_type = sect11dq7, free_quant = sect11dq8a, free_quant_units = sect11dq8b,
                             bought1_yn = s11dq12, bought1_type = s11dq15, bought1_quant = s11dq16a, bought1_quant_units = s11dq16b,
-                            bought2_yn = s11dq24, bought2_type = s11dq27, bought2_quant = s11dq28a, bought2_quant_units = s11dq28b) %>% drop_na(fert_yn) %>% mutate(leftover_quant = unit_conv(leftover_quant, leftover_quant_units),
+                            bought2_yn = s11dq24, bought2_type = s11dq27, bought2_quant = s11dq28a, bought2_quant_units = s11dq28b) %>% drop_na(fert_yn) 
+
+fert3 <- fert3 %>% mutate(leftover_quant = unit_conv(leftover_quant, leftover_quant_units),
                           free_quant = unit_conv(free_quant, free_quant_units),
                           bought1_quant = unit_conv(bought1_quant, bought1_quant_units), 
                           bought2_quant = unit_conv(bought2_quant, bought2_quant_units)) %>% select(-contains('units'))
@@ -182,6 +184,10 @@ fert2_joined
 
 fert3_joined <- inner_join(fert3, loc3_mappings)
 fert3_joined
+```
+```{r}
+t<-fert3_joined
+t[t$bought1_quant > 0 & !is.na(t$bought1_quant), ]
 ```
 
 
@@ -228,7 +234,7 @@ yn_quant <- function(type, df) {
 
 fert <- fert %>% mutate(npk_yn  = yn_quant(1, fert), urea_yn = yn_quant(2, fert), comp_manure_yn = yn_quant(3, fert), other_yn = yn_quant(4, fert))
 
-fert <- fert %>% mutate(npk_quant = agg_quant(1, fert), urea_quant = agg_quant(2, fert), comp_manure_quant = agg_quant(3, fert), other_quant = agg_quant(4, fert), total_quant = npk_quant + urea_quant + comp_manure_quant + other_quant)
+fert <- fert %>% mutate(npk_quant = agg_quant(1, fert), urea_quant = agg_quant(2, fert), comp_manure_quant = agg_quant(3, fert), other_quant = agg_quant(4, fert)) 
 
 fert
 ```
@@ -240,7 +246,7 @@ fert1
 ```
 
 ```{r}
-fert_df <- fert1 %>% select(country, start_yr, end_yr, zone, state, hhid, plotid, area, fert_rep_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, ofert_yn, iofert_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, total_quant, longitude, latitude)
+fert_df <- fert1 %>% select(country, start_yr, end_yr, zone, state, hhid, plotid, area, fert_rep_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, ofert_yn, iofert_yn, npk_quant, urea_quant, comp_manure_quant, other_quant, longitude, latitude)
 fert_df
 ```
 
@@ -300,7 +306,7 @@ final_df
 ```
 
 ```{r}
-final <- final_df %>% select(country, start_yr, end_yr, zone, state, hhid, plotid,  fert_rep_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, ofert_yn, iofert_yn, pest_yn,  herb_yn,  quant_npk = npk_quant, quant_urea = urea_quant, quant_comp_manure = comp_manure_quant, quant_other = other_quant, quant_total = total_quant,  quant_pest = pest_quant, quant_herb = herb_quant, area, longitude, latitude) %>% mutate(quant_iofert = quant_npk + quant_urea) %>% select(-c('area', 'longitude', 'latitude'), c('area', 'longitude', 'latitude'))
+final <- final_df %>% select(country, start_yr, end_yr, zone, state, hhid, plotid,  fert_rep_yn, npk_yn, urea_yn, comp_manure_yn, other_yn, ofert_yn, iofert_yn, pest_yn,  herb_yn,  quant_npk = npk_quant, quant_urea = urea_quant, quant_comp_manure = comp_manure_quant, quant_other = other_quant,  quant_pest = pest_quant, quant_herb = herb_quant, area, longitude, latitude) %>% select(-c('area', 'longitude', 'latitude'), c('area', 'longitude', 'latitude'))
 final
 ```
 

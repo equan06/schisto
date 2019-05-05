@@ -1,0 +1,276 @@
+---
+title: "TEMP""
+author: "Elliot Quan"
+date: "May 4, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+```
+
+
+```{r}
+library(sf)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(readr)
+```
+
+
+```{r}
+# auxiliary function for handling sums of NA vectors
+# handles NA by returning NA if all are NA
+sumNA <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(sum(x, na.rm=TRUE))
+  }
+}
+
+# same as above, except mean
+meanNA <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(mean(x, na.rm=TRUE))
+  }
+}
+
+# take a vector of inputs: if at least 1 input is 1, then return 1 else 0.
+# handles NA by returning NA if all are NA
+indicator <- function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else if (sum(x, na.rm=TRUE) > 0) {
+    return(1)
+  } else {
+    return(0)
+  }
+}
+```
+
+
+```{r}
+# shapefile
+uga_zone <- readRDS("../shapefiles/uga/GADM/gadm36_UGA_2_sf.rds")
+uga_zone_sf <- st_transform(uga_zone,crs=4326) # convert to mercator/planar (3857)
+uga_zone_sf <- uga_zone_sf %>% select(NAME_1, NAME_2)
+uga_zone_sf
+```
+
+
+```{r}
+ggplot(uga_zone) +geom_sf()
+```
+
+```{r}
+lsms <- read_csv('../results/uga_lsms_full.csv')
+lsms
+```
+
+
+We would like to compute total quantity of fert and total quant of inorg fert. In this case, total quantity is total inorg, since only inorg quant data is present.
+
+Note: we're using rowSums which has the behavior NA + NA = 0 (since na.rm=TRUE). There are potentially complicated ways to resolve this (to have NA+NA = NA, but this will be noted in the report). This impacts approx. 800 out of 66000 rows, so it's not a huge issue.
+```{r}
+lsms <- lsms %>% mutate(quant_iofert = select(., matches('quant_nitrate|quant_phosphate|quant_potash|quant_mixed')) %>% rowSums(na.rm=TRUE)) 
+```
+
+
+Also summarizing organic+inorganic fert used into an indicator of overall fert:
+```{r}
+lsms <- lsms %>% mutate(fert_yn = select(., matches('ofert_rep_yn|iofert_rep_yn')) %>% rowSums(na.rm=TRUE)) %>% mutate(fert_yn = as.numeric(fert_yn > 0))
+```
+
+
+
+
+```{r}
+# extracting lon/lat for each household
+lsms_locations <- unique(lsms %>% select(country, start_yr, end_yr, hhid, longitude, latitude))
+
+# i may delete these lines later. 
+# converting to ansf object. we each lon/lat pair is converted to a geometry (point)
+# default crs for long/lat is WGS84 (EPSG: 4326)
+lsms_sf <- st_as_sf(x=lsms_locations, coords=c('longitude', 'latitude'), crs=4326)
+# transform to mercator (EPSG: 3857)
+
+```
+
+
+
+
+```{r}
+# grouping by household with indicators first
+indic_hh <- lsms %>% select(-c(parcelid, plotid)) %>% group_by(country, start_yr, end_yr, hhid) %>% summarize_at(vars(matches('yn')), indicator)
+
+quant_hh <- lsms %>% select(-c(parcelid, plotid)) %>% group_by(country, start_yr, end_yr, hhid) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+hh_level <- inner_join(indic_hh, quant_hh, by=c('country', 'start_yr', 'end_yr', 'hhid'))
+# we have a weird row here. will invesigate later.
+hh_level <- hh_level %>% filter(country != 4)
+```
+
+Converting m^2 to hectare.
+
+```{r}
+hh_level_conv <- hh_level %>% mutate(area=area/10000)
+```
+
+Now all rows are at hh level. We first merge with the hh locations, then spatial join with the zone shapefile data, and then group by NAME_2 (the second subdivision level).
+
+```{r}
+lsms_sf <- inner_join(hh_level_conv, lsms_locations) %>% st_as_sf(coords=c('longitude', 'latitude'), crs=4326) 
+
+unfiltered <- st_join(lsms_sf, uga_zone_sf, left=FALSE) 
+
+
+```
+
+
+Checking a few points that end up being classified in Lake Victoria. 
+```{r}
+lake <- unfiltered[unfiltered$NAME_1 == 'Lake Victoria',] %>% filter(start_yr==2011) 
+lake
+ggplot(uga_zone_sf) + geom_sf() + 
+  geom_sf(data=lake, aes(size=4)) + coord_sf(crs=4326) + coord_sf(xlim=c(32,34),ylim=c(0,1))
+```
+
+Since there are so few points we'll just drop them (< 10). This is just part of the error, I suppose.
+
+
+```{r}
+unfiltered <- unfiltered %>% filter(NAME_1 != 'Lake Victoria')
+```
+
+
+rows with missing areas will be dropped.
+```{r}
+nrow(unfiltered[unfiltered$area == 0 | is.na(unfiltered$area) , ])
+```
+
+
+```{r}
+filtered <- unfiltered[!(unfiltered$area == 0 | is.na(unfiltered$area)), ] 
+filtered
+```
+
+
+
+Now that zones are introduced,  we need to split the df into indicator and quant. variables, and group separately by household using mean and sum.
+```{r}
+# averaging indicators
+a <- unfiltered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_at(vars(matches('yn')), meanNA)
+
+# summing quant/area
+b <- filtered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+c <- filtered %>% group_by(country, start_yr, end_yr, NAME_1, NAME_2) %>% summarize(avg_iofert_usage = mean(sumNA(quant_iofert)/sumNA(area)), avg_nitrate_usage = mean(sumNA(quant_nitrate)/sumNA(area)), avg_phosphate_usage = mean(sumNA(quant_phosphate)/sumNA(area)), avg_potash_usage = mean(sumNA(quant_potash)/sumNA(area)), avg_mixed_usage = mean(sumNA(quant_mixed)/sumNA(area)), avg_pest_usage = mean(sumNA(quant_pest)/sumNA(area)))
+```
+
+
+
+```{r}
+temp <- inner_join(a %>% as.data.frame(), b %>% as.data.frame(),  by=c('country', 'start_yr', 'end_yr', 'NAME_1', 'NAME_2')) %>% inner_join(c %>% as.data.frame(), by=c('country', 'start_yr', 'end_yr', 'NAME_1', 'NAME_2'))
+
+# abusing var names here...
+temp1 <- temp %>% st_as_sf(sf_column_name = 'geometry.x') %>% rename(geometry=geometry.x)
+```
+
+
+
+One more step: to get the geometry back to polygons (of NAME_2), we need to spatial join with uga_zone_sf.
+
+```{r}
+zone_lvl <- st_join(uga_zone_sf, temp1, left=FALSE)
+zone_lvl
+```
+
+
+
+
+
+
+# Plotting by Zone
+
+basic plot of fert distribution by year
++ theme(axis.text = element_blank())
+```{r}
+p <- ggplot(zone_lvl) + geom_sf(aes(fill=fert_yn)) + facet_wrap(.~start_yr)  + ggtitle('Uganda: % of Households using Fertilizer')  
+print(p)
+ggsave('../plots/uga/fert.png', plot=p, width = 10, height = 4, units='in', dpi=300)
+```
+
+
+```{r}
+p <- ggplot(zone_lvl) + geom_sf(aes(fill=iofert_rep_yn)) + facet_wrap(.~start_yr)  + ggtitle('Uganda: % of Households using Inorganic Fert.')  
+print(p)
+ggsave('../plots/uga/iofert.png', plot=p, width = 10, height = 4, units='in', dpi=300)
+```
+
+
+
+```{r}
+p <- ggplot(zone_lvl) + geom_sf(aes(fill=avg_iofert_usage)) + facet_wrap(.~start_yr) + theme(axis.text=element_blank()) + ggtitle('Uganda: Avg. Total Inorganic Fert. Usage (kg/ha)')
+print(p)
+ggsave('../plots/uga/iofert_usage.png', plot=p, width=10, height=4, units='in', dpi=300)
+```
+
+#  Trends over Time
+
+Let's also do an aggregation to get some country level statistics (so groupby country).
+
+```{r}
+a1 <- unfiltered %>% group_by(country, start_yr, end_yr) %>% summarize_at(vars(matches('yn')), meanNA)
+
+b1 <- filtered %>% group_by(country, start_yr, end_yr) %>% summarize_at(vars(matches('quant|area')), sumNA)
+
+
+c1 <- filtered %>% group_by(country, start_yr, end_yr) %>% summarize(avg_iofert_usage = mean(sumNA(quant_iofert)/sumNA(area)), avg_nitrate_usage = mean(sumNA(quant_nitrate)/sumNA(area)), avg_phosphate_usage = mean(sumNA(quant_phosphate)/sumNA(area)), avg_potash_usage = mean(sumNA(quant_potash)/sumNA(area)), avg_mixed_usage = mean(sumNA(quant_mixed)/sumNA(area)), avg_pest_usage = mean(sumNA(quant_pest)/sumNA(area)))
+
+country_lvl <- inner_join(a1 %>% as.data.frame(), b1 %>% as.data.frame(),  by=c('country', 'start_yr', 'end_yr')) %>% inner_join(c1 %>% as.data.frame(), by=c('country', 'start_yr', 'end_yr'))
+country_lvl
+```
+
+These are simple line plots, one point for each year.
+
+```{r}
+p <- ggplot(country_lvl, aes(x=start_yr)) + 
+  geom_line(aes(y=avg_nitrate_usage, color='Nitrate')) +
+  geom_line(aes(y=avg_phosphate_usage, color='Phosphate')) +
+  geom_line(aes(y=avg_potash_usage, color='Potash')) +
+  geom_line(aes(y=avg_mixed_usage, color='Mixed')) +
+  geom_line(aes(y=avg_iofert_usage, color='Inorg.')) +
+  geom_point(aes(y=avg_nitrate_usage, color='Nitrate')) +
+  geom_point(aes(y=avg_phosphate_usage, color='Phospate')) +
+  geom_point(aes(y=avg_potash_usage, color='Potash')) +
+  geom_point(aes(y=avg_mixed_usage, color='Mixed')) +
+  geom_point(aes(y=avg_iofert_usage, color='Inorg.')) +
+  labs(x='start year', y='avg usage', colour='Fert. Type') + 
+  ggtitle('Uganda: Avg. Total Inorg. Fert. Usage (kg/ha) by Households')
+print(p)
+ggsave('../plots/uga/country_iofert_usage_time.png', plot=p, width=6, height=4, units='in', dpi=300)
+```
+
+```{r}
+p <- ggplot(country_lvl, aes(x=start_yr)) + 
+    geom_line(aes(y=nitrate_yn, color='Nitrate')) +
+  geom_line(aes(y=phosphate_yn, color='Phosphate')) +
+  geom_line(aes(y=potash_yn, color='Potash')) +
+  geom_line(aes(y=mixed_yn, color='Mixed')) +
+  geom_line(aes(y=iofert_rep_yn, color='Inorg.')) +
+  geom_point(aes(y=nitrate_yn, color='Nitrate')) +
+  geom_point(aes(y=phosphate_yn, color='Phospate')) +
+  geom_point(aes(y=potash_yn, color='Potash')) +
+  geom_point(aes(y=mixed_yn, color='Mixed')) +
+  geom_point(aes(y=iofert_rep_yn, color='Inorg.')) +
+  labs(x='start year', y='% HH used', colour='Fert. Type') + 
+  ggtitle('Uganda: % Households using Fertilizer')
+print(p)
+ggsave('../plots/uga/country_percent_fert.png', plot=p, width=6, height=4, units='in', dpi=300)
+```
+
+

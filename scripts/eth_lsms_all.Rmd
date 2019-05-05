@@ -175,9 +175,7 @@ fert_df <- fert_df %>%
 
 
 
-```{r}
-fert_df <- fert_df %>% mutate(quant_iofert = select(., matches('quant_dap|quant_urea')) %>% rowSums(na.rm=TRUE), usage_urea = quant_urea/area, usage_dap = quant_dap/area, usage_total = quant_iofert / area)
-```
+
 
 
 
